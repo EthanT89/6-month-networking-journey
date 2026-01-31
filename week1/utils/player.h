@@ -4,12 +4,14 @@
 #ifndef PLAYER_H
 #define PLAYER_H
 
+// Custom utility files
 #include "../common.h"
+
+// Standard libraries for string and addrinfo logic
 #include <netinet/in.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-
 
 /*
  * Player -- A struct for storing connected user data.

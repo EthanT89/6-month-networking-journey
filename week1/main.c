@@ -2,22 +2,24 @@
  * main.c -- main file for handling game server logic
  */
 
-#include "./utils/pfds.h"
+// Custom utility files
 #include "./utils/time_custom.h"
 #include "./utils/player.h"
 #include "./utils/buffer_manipulation.h"
 #include "./common.h"
+
+// Standard socket/server libraries
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/socket.h>
-#include <sys/types.h>
-
 #include <netdb.h>
 #include <poll.h>
 #include <netinet/in.h>
-#include <unistd.h>
 
+/*
+ * get_socket() -- create a socket and return its file descriptor
+ */
 int get_socket(){
     int sockfd, rv;
     int yes = 1;
@@ -67,38 +69,78 @@ int get_socket(){
     return sockfd;
 }
 
+/*
+ * construct_user_update_packet() -- create a packet containing info about a particular user
+ */
 void construct_user_update_packet(struct Player *player, unsigned char packet[MAXBUFSIZE]){
     packi16(packet, APPID);
     packi16(packet+2, USERUPDATE_ID);
     packi16(packet+4, player->id);
     strcpy(packet+6, player->username);
-    printf("username: %s\n", packet+6);
 }
 
+/*
+ * send_all_users_data() -- send a single player's info to ALL players
+ */
 void send_user_update_all(int sockfd, struct Players *players, struct Player *player){
     unsigned char update[MAXBUFSIZE];
     construct_user_update_packet(player, update);
     
     struct Player *cur = players->head;
     for (cur; cur != NULL; cur = cur->next){
+        if (cur->id == player->id){
+            continue;
+        }
         sendto(sockfd, update, strlen(update+6)+6, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
     }
 }
 
+/*
+ * send_user_update_all() -- send ALL players info to ONE player.
+ */
 void send_all_users_data(int sockfd, struct Players *players, struct Player *player){
     struct Player *cur = players->head;
     for (cur; cur != NULL; cur = cur->next){
         unsigned char update[MAXBUFSIZE];
         construct_user_update_packet(cur, update);
-
         sendto(sockfd, update, strlen(update+6)+6, 0, (struct sockaddr*)&player->addr, player->addrlen);
     }
 }
 
-void handle_command(){
+/*
+ * handle_command() -- unpack and handle any incoming commands. Ignore unhandled commands.
+ *
+ * Available commands:
+ * 'update_username' - update an existing user's username, then broadcast this update to all connected users
+ * 'reset_coords' - reset an existing user's coordinates to (0,0), and broadcast this update to all connected users
+ */
+void handle_command(struct Players *players, struct Player *player, unsigned char command[MAXBUFSIZE], int sockfd){
     // TODO: handle command (future)
+    int command_id = unpacki16(command);
+
+    if (command_id == UPDATE_USERNAME){
+        printf("updating username: %s\n", command+2);
+        strncpy(player->username, command+2, MAXUSERNAME);
+
+        send_user_update_all(sockfd, players, player);
+        return;
+    }
+
+    if (command_id == RESET_COORDS){
+        printf("resetting coords for %s\n", player->username);
+        player->x = 0;
+        player->y = 0;
+        return;
+    }
+
 }
 
+/*
+ * handle_new_connection() -- create a new player and assign the new connection to this player. Update their username, id, coords, etc.
+ *
+ * Then, send all existing player info about every connected player to this new player, so they have the latest game state. Lastly, send the
+ * new user's info to all connected users.
+ */
 void handle_new_connection(int sockfd, struct Players *players, struct sockaddr_in addr, socklen_t addr_len, unsigned char data[MAXBUFSIZE], int *id_count){
     
     struct Player *new_player = malloc(sizeof *new_player);
@@ -125,25 +167,68 @@ void handle_new_connection(int sockfd, struct Players *players, struct sockaddr_
         }
     }
 
+
     strncpy(new_player->username, data, len);
     send_user_update_all(sockfd, players, new_player);
+
     send_all_users_data(sockfd, players, new_player);
 
     add_player(players, new_player);
 }
 
-void handle_update(struct Player *player, unsigned char data[MAXBUFSIZE]){
+/*
+ * handle_update() -- handle an update from a particular player
+ *
+ * Unpacks the x and y coordinates of the update, and verifies it is legitimate by checking the difference between the new coordinates and old coordinates.
+ * x/y coordinates can change by 2 units at a time to allow for possible missed packets, otherwise it is considered illegitimate.
+ * 
+ * If an update is considered illegitimate, the old coordinates are sent to the sender, forcing them to fallback to these values.
+ */
+void handle_update(struct Player *player, unsigned char data[MAXBUFSIZE], int sockfd){
     int x = unpacki16(data);
     int y = unpacki16(data + 2);
+
+    // Check for valid x,y change (player can only move one unit at a time.)
+    if (abs(x - player->x) > 2 || abs(y - player->y) > 2){
+
+        unsigned char update[MAXBUFSIZE];
+        memset(update, 0, MAXBUFSIZE);
+
+        // Pack appid and updateid to secure message
+        packi16(update, APPID);
+        packi16(update+2, UPDATE_ID);
+
+        int offset = 4;
+
+        packi16(update+offset, player->id);
+        offset += 2;
+        packi16(update+offset, player->x);
+        offset += 2;
+        packi16(update+offset, player->y);
+        offset += 2;
+
+        sendto(sockfd, update, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
+
+        return;
+    }
 
     player->x = x;
     player->y = y;
 }
 
+/*
+ * handle_disconnection() -- cleanly handle a disconnection. Remove this player from the players struct and update all connected users of this change. This relies
+ * on the client server sending an exit code (assumes clean exit on their end.)
+ * 
+ * Currently does not handle unintentional connections.
+ */
 void handle_disconnection(struct Players *players, int id){
     remove_player(players, id);
 }
 
+/*
+ * handle_data() -- Given ANY data to read from the server socket, unpack, verify, and handle next actions for the data.
+ */
 void handle_data(int sockfd, struct Players *players, int *id_count){
 
     struct sockaddr_in *their_addr = malloc(sizeof *their_addr);
@@ -178,12 +263,13 @@ void handle_data(int sockfd, struct Players *players, int *id_count){
     }
 
     if (msg_type == UPDATE_ID){
-        handle_update(sender, data);
+        handle_update(sender, data, sockfd);
         return;
     }
 
     if (msg_type == COMMAND_ID){
         printf("received command!\n");
+        handle_command(players, sender, data, sockfd);
         return;
     }
 
@@ -194,7 +280,11 @@ void handle_data(int sockfd, struct Players *players, int *id_count){
     }
 }
 
-void broadcast_positions(int sockfd, struct Players *players){
+/*
+ * broadcast_positions() -- Create an update packet containing the x,y coordinates for ALL players, and send that packet to every connected player.
+ * If an update is identical to the last update, no update is sent, as that would be redundant
+ */
+void broadcast_positions(int sockfd, struct Players *players, unsigned char last_update[MAXBUFSIZE]){
     unsigned char update[MAXBUFSIZE];
     memset(update, 0, MAXBUFSIZE);
 
@@ -213,19 +303,35 @@ void broadcast_positions(int sockfd, struct Players *players){
         offset += 2;
         packi16(update+offset, cur->y);
         offset += 2;
-    }    
+    }
+
+    if (memcmp(last_update, update, MAXBUFSIZE) == 0){
+        return;
+    }
 
     cur = players->head;
     for (cur; cur != NULL; cur = cur->next){
         sendto(sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
     }
+
+    memcpy(last_update, update, MAXBUFSIZE);
 }
 
+/*
+ * main() -- Startup the multiplayer movement server, setup initial structs, and start main loop
+ *
+ * Main loop constantly checks again the last tick time, when the last tick time is greater or equal to TICKRATE seconds ago,
+ * updates are broadcasted to all users.
+ * 
+ * It also looks for any incoming data using poll(). If any data is ready to be read, it calls handle_data() 
+ */
 int main(void)
 {
     int last_tick = 0;
     int sockfd = get_socket();
     int id_count = 1;
+
+    unsigned char last_update[MAXBUFSIZE];
 
     struct pollfd *pfds = malloc(sizeof *pfds);
     pfds[0].fd = sockfd;
@@ -241,7 +347,7 @@ int main(void)
         if (interval_elapsed_cur(last_tick, TICKRATE)){
             // handle tick logic - broadcast()
             // Assume all packets make it. Packets are time sensitive so it is not worth it to resend. (locally, this is extremely fast though)
-            broadcast_positions(sockfd, players);
+            broadcast_positions(sockfd, players, last_update);
             last_tick = get_time_ms();
         }
 
@@ -251,12 +357,3 @@ int main(void)
         }        
     }
 }
-
-
-/*
- * FAILING DISCONNECT CASES (a connects, then b, then c):
- *
- * a -> c (extra unknown user) -> (crashes)  ---  C does not get removed correctly (first in linked list)
- * c -> (not removed correctly) --- First node must not be getting removed correct, still present.
- * 
- */
