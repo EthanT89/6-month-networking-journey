@@ -184,6 +184,13 @@ void print_cmd_help(){
     printf("\n");
 }
 
+/*
+ * get_x_y_symbol() -- given x,y coordinates, determine if the symbol should represent a player or an empty space.
+ *
+ * Boundary and Treasure symbols have already been considered up to this point, so only Players and Empty Spaces are left.
+ * Currently, the actual print function overrides the empty_symbol for alternating symbols.
+ * TODO: clean up logic and code for EMPTY_SYMBOL's
+ */
 char* get_x_y_symbol(struct Players *players, int x, int y){
     struct Player *cur = players->head;
 
@@ -196,6 +203,31 @@ char* get_x_y_symbol(struct Players *players, int x, int y){
     return EMPTY_SYMBOL;
 }
 
+/*
+ * print_gamestate() -- print the latest gamestate into the structure that follows:
+ *
+ *  Treasure: (58,72) - 1 point                  // Current treasure coordinates and point value
+ *  ________________________________________
+ *  |  Player     |   Coords    |  Score   |
+ *  |_____________|_____________|__________|
+ *  |  ethan      |  (+02,+03)  |  09 pts  |     // Player state
+ *  |_____________|_____________|__________|
+ *  |  bot        |  (+58,+70)  |  32 pts  |     // Other player's states
+ *  |  bot        |  (+08,+37)  |  12 pts  |
+ *  |_____________|_____________|__________|
+ *
+ *  X .   $   .   ,   .                          // Current viewport - an X by X grid of the current state. 
+ *  X                                            // Symbols:
+ *  X ,   ,   ,   ,   ,                          // 
+ *  X                                            // '$' - treasure
+ *  X .   ,   e   ,   .                          // 'e' - other player
+ *  X                                            // 'o' - current player
+ *  X , o ,   ,   ,   ,                          // 'X' - wall/boundary
+ *  X                                            // ','/'.' - empty space. Symbols alternate to give illusion of movement 
+ *  X .   ,   .   ,   . 
+ *  X X X X X X X X X X 
+ * 
+ */
 void print_gamestate(struct Players *players, struct User *user){
     struct Player *cur = players->head;
 
@@ -279,6 +311,7 @@ void print_gamestate(struct Players *players, struct User *user){
         printf("\n");
     }
 }
+
 /*
  * handle_shutdown() -- handles shutting down the client server cleanly. Resets terminal settings, sends exit code to server, and closes the socket.
  */
@@ -448,6 +481,9 @@ void handle_player_disconnect(struct Players *players, unsigned char buf[MAXBUFS
     remove_player(players, id);
 }
 
+/*
+ * handle_treasure() -- handle a treasure update from the server
+ */
 void handle_treasure(struct User *user, unsigned char buf[MAXBUFSIZE]){
     int offset = STARTING_OFFSET;
 

@@ -17,6 +17,10 @@
 #include <poll.h>
 #include <netinet/in.h>
 
+/*
+ * gen_new_treasure() -- populates a treasure struct with random x,y coordinates and a score value. x,y are bounded within BOUNDX and BOUNDY
+ * value is bounded 1-3 points.
+ */
 void gen_new_treasure(struct Treasure *treasure){
     srand(time(NULL));
     treasure->x = (rand() % (BOUNDX-2)) + 1;
@@ -25,6 +29,9 @@ void gen_new_treasure(struct Treasure *treasure){
     treasure->value = (rand() % (MAXTREASUREVAL-1)) + 1;
 }
 
+/*
+ * broadcast_treasure() -- broadcast the data of a treasure to all players to update the game state. x, y, and points values are sent.
+ */
 void broadcast_treasure(int sockfd, struct Players *players, struct Treasure *treasure){
     unsigned char update[MAXBUFSIZE];
     int offset = 0;
@@ -202,6 +209,14 @@ void handle_new_connection(int sockfd, struct Players *players, struct sockaddr_
     broadcast_treasure(sockfd, players, treasure);
 }
 
+/*
+ * validate_movement() -- given a player's requested updated coordinates, validate against possible cheats, walls, and other players
+ *
+ * If a player tries to move more than 2 units at a time (room for one packet drop), it is considered cheating and their old coordinates
+ * are sent back, forcing them to reset.
+ * If a player tries to move into a wall, the same process ensues
+ * If a player tries to move into a unit occupied by another player, also rejected
+ */
 int validate_movement(int sockfd, struct Players *players, struct Player *player, int x, int y){
     int valid = 1;
 
