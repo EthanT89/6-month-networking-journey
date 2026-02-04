@@ -9,6 +9,9 @@
 #define MAXBUFSIZE 100 // max size of a buffer (packet)
 #define MAXCOMMANDSIZE 15 // max size of a command message
 #define STARTING_OFFSET 4 // standard offset for packets (4 bytes for APPID and MSGTYPE)
+#define BOUNDX 100 // Size of map in the X plane
+#define BOUNDY 100 // Size of map in the Y plane
+#define MAXTREASUREVAL 3 // max value of a single treasure
 
 // Various ids that identify a certain message type
 #define USERUPDATE_ID 6123 // an update on users. For a client, this means other players, for the server, an updated username, id, etc.
@@ -16,9 +19,24 @@
 #define COMMAND_ID 8008 // A command update (/help, /reset, etc)
 #define UPDATE_ID 2026 // Positional updates
 #define EXIT_ID 2581 // User disconnection
+#define TREASURE_ID 450
+
+// Viewport Symbols
+#define BOUNDARY_SYMBOL "X"
+#define PLAYER_SYMBOL "o"
+#define PLAYER_SYMBOL2 "e"
+#define EMPTY_SYMBOL "*"
+#define TREASURE_SYMBOL "$"
 
 // Commands INT form
 #define UPDATE_USERNAME 55 // request to update a player's username
 #define RESET_COORDS 56 // request to reset a player's coordinates
+
+// Globally used treasure struct
+struct Treasure {
+    int x;
+    int y;
+    int value;
+};
 
 #endif
