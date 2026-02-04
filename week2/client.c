@@ -1,5 +1,5 @@
 /*
- * main.c -- client file for handling ciient server logic
+ * client.c -- client file for handling ciient server logic
  */
 
 // Custom utility files
@@ -600,22 +600,22 @@ int main(void)
                 } else {
                     botmove = 'a';
                 }
-            } else if (user->x <= user->treasure->x){
+            } else if (user->x < user->treasure->x){
                 if (random == 1 && user->y != user->treasure->y){
                     botmove = user->y > user->treasure->y ?  's' : 'w';
                 } else {
                     botmove = 'd';
                 }
             } else {
-                botmove = random == 1 ? 'w' : 'd';
+                if (user->y > user->treasure->y){
+                    botmove = 's';
+                } else {
+                    botmove = 'w';
+                }
             }
 
             handle_keypress(sockfd, p, botmove, &original_settings, user, &last_tick);
-            if (user->score > 5){
-                next_move = rand() % 450 + 50;
-            } else {
-                next_move = rand() % 250 + 50;
-            }
+            next_move = rand() % 450 + 50;
         }
 
         if (poll(pfds, 1, 0) > 0){

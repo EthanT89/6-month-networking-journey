@@ -1,3 +1,7 @@
+/*
+ * common.h -- common file for constants, small structs, and symbols
+ */
+
 #ifndef COMMON_H
 #define COMMON_H
 
@@ -31,12 +35,5 @@
 // Commands INT form
 #define UPDATE_USERNAME 55 // request to update a player's username
 #define RESET_COORDS 56 // request to reset a player's coordinates
-
-// Globally used treasure struct
-struct Treasure {
-    int x;
-    int y;
-    int value;
-};
 
 #endif
