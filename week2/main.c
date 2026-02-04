@@ -17,6 +17,30 @@
 #include <poll.h>
 #include <netinet/in.h>
 
+void gen_new_treasure(struct Treasure *treasure){
+    srand(time(NULL));
+    treasure->x = rand() % BOUNDX-2 + 1;
+    treasure->y = rand() % BOUNDY-2 + 1;
+
+    treasure->value = (rand() % (MAXTREASUREVAL-1)) + 1;
+}
+
+void broadcast_treasure(int sockfd, struct Players *players, struct Treasure *treasure){
+    unsigned char update[MAXBUFSIZE];
+    int offset = 0;
+
+    packi16(update+offset, APPID); offset += 2;
+    packi16(update+offset, TREASURE_ID); offset += 2;
+    packi16(update+offset, treasure->x); offset += 2;
+    packi16(update+offset, treasure->y); offset += 2;
+    packi16(update+offset, treasure->value); offset += 2;
+
+    struct Player *cur = players->head;
+    for (cur; cur != NULL; cur = cur->next){
+        sendto(sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
+    }
+}
+
 /*
  * get_socket() -- create a socket and return its file descriptor
  */
@@ -80,7 +104,7 @@ void construct_user_update_packet(struct Player *player, unsigned char packet[MA
 }
 
 /*
- * send_all_users_data() -- send a single player's info to ALL players
+ * send_all_users_data() -- send a SINGLE player's info to ALL players
  */
 void send_user_update_all(int sockfd, struct Players *players, struct Player *player){
     unsigned char update[MAXBUFSIZE];
@@ -96,7 +120,7 @@ void send_user_update_all(int sockfd, struct Players *players, struct Player *pl
 }
 
 /*
- * send_user_update_all() -- send ALL players info to ONE player.
+ * send_user_update_all() -- send EVERY players' info to ONE player.
  */
 void send_all_users_data(int sockfd, struct Players *players, struct Player *player){
     struct Player *cur = players->head;
@@ -128,8 +152,8 @@ void handle_command(struct Players *players, struct Player *player, unsigned cha
 
     if (command_id == RESET_COORDS){
         printf("resetting coords for %s\n", player->username);
-        player->x = 0;
-        player->y = 0;
+        player->x = rand() % BOUNDX-2;
+        player->y = rand() % BOUNDY-2;
         return;
     }
 
@@ -141,14 +165,15 @@ void handle_command(struct Players *players, struct Player *player, unsigned cha
  * Then, send all existing player info about every connected player to this new player, so they have the latest game state. Lastly, send the
  * new user's info to all connected users.
  */
-void handle_new_connection(int sockfd, struct Players *players, struct sockaddr_in addr, socklen_t addr_len, unsigned char data[MAXBUFSIZE], int *id_count){
+void handle_new_connection(int sockfd, struct Players *players, struct sockaddr_in addr, socklen_t addr_len, unsigned char data[MAXBUFSIZE], int *id_count, struct Treasure *treasure){
     
     struct Player *new_player = malloc(sizeof *new_player);
     new_player->addr = addr;
     new_player->addrlen = addr_len;
     new_player->id = (*id_count)++;
-    new_player->x = 0;
-    new_player->y = 0;
+    new_player->score = 2;
+    new_player->x = (rand() % BOUNDX-2) + 1;
+    new_player->y = (rand() % BOUNDY-2) + 1;
 
     // extract username
     size_t len = strlen(data);
@@ -174,23 +199,30 @@ void handle_new_connection(int sockfd, struct Players *players, struct sockaddr_
     send_all_users_data(sockfd, players, new_player);
 
     add_player(players, new_player);
+    broadcast_treasure(sockfd, players, treasure);
 }
 
-/*
- * handle_update() -- handle an update from a particular player
- *
- * Unpacks the x and y coordinates of the update, and verifies it is legitimate by checking the difference between the new coordinates and old coordinates.
- * x/y coordinates can change by 2 units at a time to allow for possible missed packets, otherwise it is considered illegitimate.
- * 
- * If an update is considered illegitimate, the old coordinates are sent to the sender, forcing them to fallback to these values.
- */
-void handle_update(struct Player *player, unsigned char data[MAXBUFSIZE], int sockfd){
-    int x = unpacki16(data);
-    int y = unpacki16(data + 2);
+int validate_movement(int sockfd, struct Players *players, struct Player *player, int x, int y){
+    int valid = 1;
 
-    // Check for valid x,y change (player can only move one unit at a time.)
-    if (abs(x - player->x) > 2 || abs(y - player->y) > 2){
+    struct Player *cur = players->head;
+    for (cur; cur != NULL; cur = cur->next){
+        if (cur->id == player->id){
+            continue;
+        }
+        if (cur->x == x && cur->y == y){ // Other player occupies that tile
+            valid = 0;
+            break;
+        }
+    }
 
+    if (valid == 1 && (abs(x - player->x) > 2 || abs(y - player->y) > 2)){ // Too many movements at once (cheating)
+        valid = 0;
+    } else if (valid == 1 && (x == 0 || x == BOUNDX || y == 0 || y == BOUNDY)){ // Out of bounds
+        valid = 0;
+    }
+    
+    if (valid == 0){
         unsigned char update[MAXBUFSIZE];
         memset(update, 0, MAXBUFSIZE);
 
@@ -209,11 +241,37 @@ void handle_update(struct Player *player, unsigned char data[MAXBUFSIZE], int so
 
         sendto(sockfd, update, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
 
+        return 0;
+    }
+    return 1;
+}
+
+/*
+ * handle_update() -- handle an update from a particular player
+ *
+ * Unpacks the x and y coordinates of the update, and verifies it is legitimate by checking the difference between the new coordinates and old coordinates.
+ * x/y coordinates can change by 2 units at a time to allow for possible missed packets, otherwise it is considered illegitimate.
+ * 
+ * If an update is considered illegitimate, the old coordinates are sent to the sender, forcing them to fallback to these values.
+ */
+void handle_update(struct Players *players, struct Player *player, unsigned char data[MAXBUFSIZE], int sockfd, struct Treasure *treasure){
+    int x = unpacki16(data);
+    int y = unpacki16(data + 2);
+
+    // Check for valid x,y change (player can only move one unit at a time.)
+    if (validate_movement(sockfd, players, player, x, y) == 0){
         return;
     }
 
     player->x = x;
     player->y = y;
+
+    if (x == (treasure->x) && (y == treasure->y)){
+        printf("%s got a treasure worth %d points!\n", player->username, treasure->value);
+        player->score += treasure->value;
+        gen_new_treasure(treasure);
+        broadcast_treasure(sockfd, players, treasure);
+    }
 }
 
 /*
@@ -222,14 +280,26 @@ void handle_update(struct Player *player, unsigned char data[MAXBUFSIZE], int so
  * 
  * Currently does not handle unintentional connections.
  */
-void handle_disconnection(struct Players *players, int id){
+void handle_disconnection(int sockfd, struct Players *players, int id){
     remove_player(players, id);
+
+    unsigned char update[MAXBUFSIZE];
+    int offset = 0;
+
+    packi16(update+offset, APPID); offset += 2;
+    packi16(update+offset, EXIT_ID); offset += 2;
+    packi16(update+offset, id); offset += 2;
+
+    struct Player *cur = players->head;
+    for (cur; cur != NULL; cur = cur->next){
+        sendto(sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
+    }
 }
 
 /*
  * handle_data() -- Given ANY data to read from the server socket, unpack, verify, and handle next actions for the data.
  */
-void handle_data(int sockfd, struct Players *players, int *id_count){
+void handle_data(int sockfd, struct Players *players, int *id_count, struct Treasure *treasure){
 
     struct sockaddr_in *their_addr = malloc(sizeof *their_addr);
     socklen_t their_len = sizeof *their_addr;
@@ -257,13 +327,13 @@ void handle_data(int sockfd, struct Players *players, int *id_count){
     if (sender == NULL){
         if (msg_type == UPDATE_ID){
             printf("new connection!\n");
-            handle_new_connection(sockfd, players, *their_addr, their_len, data, id_count);
+            handle_new_connection(sockfd, players, *their_addr, their_len, data, id_count, treasure);
         }
         return;
     }
 
     if (msg_type == UPDATE_ID){
-        handle_update(sender, data, sockfd);
+        handle_update(players, sender, data, sockfd, treasure);
         return;
     }
 
@@ -275,34 +345,32 @@ void handle_data(int sockfd, struct Players *players, int *id_count){
 
     if (msg_type == EXIT_ID){
         printf("%s disconnected!\n", sender->username);
-        handle_disconnection(players, sender->id);
+        handle_disconnection(sockfd, players, sender->id);
         return;
     }
 }
 
 /*
- * broadcast_positions() -- Create an update packet containing the x,y coordinates for ALL players, and send that packet to every connected player.
+ * broadcast_updates() -- Create an update packet containing the x,y coordinates and score for ALL players, and send that packet to every connected player.
  * If an update is identical to the last update, no update is sent, as that would be redundant
  */
-void broadcast_positions(int sockfd, struct Players *players, unsigned char last_update[MAXBUFSIZE]){
+void broadcast_updates(int sockfd, struct Players *players, unsigned char last_update[MAXBUFSIZE]){
     unsigned char update[MAXBUFSIZE];
     memset(update, 0, MAXBUFSIZE);
+    int offset = 0;
 
     // Pack appid and updateid to secure message
-    packi16(update, APPID);
-    packi16(update+2, UPDATE_ID);
+    packi16(update+offset, APPID); offset += 2;
+    packi16(update+offset, UPDATE_ID); offset += 2;
 
-    int offset = 4;
     struct Player *cur = players->head;
 
     // Loop through players and pack their x,y coordinates and ID
     for (cur; cur != NULL; cur = cur->next){
-        packi16(update+offset, cur->id);
-        offset += 2;
-        packi16(update+offset, cur->x);
-        offset += 2;
-        packi16(update+offset, cur->y);
-        offset += 2;
+        packi16(update+offset, cur->id); offset += 2;
+        packi16(update+offset, cur->x); offset += 2;
+        packi16(update+offset, cur->y); offset += 2;
+        packi16(update+offset, cur->score); offset += 2;
     }
 
     if (memcmp(last_update, update, MAXBUFSIZE) == 0){
@@ -331,6 +399,9 @@ int main(void)
     int sockfd = get_socket();
     int id_count = 1;
 
+    struct Treasure *treasure = malloc(sizeof *treasure);
+    gen_new_treasure(treasure);
+
     unsigned char last_update[MAXBUFSIZE];
 
     struct pollfd *pfds = malloc(sizeof *pfds);
@@ -347,13 +418,13 @@ int main(void)
         if (interval_elapsed_cur(last_tick, TICKRATE)){
             // handle tick logic - broadcast()
             // Assume all packets make it. Packets are time sensitive so it is not worth it to resend. (locally, this is extremely fast though)
-            broadcast_positions(sockfd, players, last_update);
+            broadcast_updates(sockfd, players, last_update);
             last_tick = get_time_ms();
         }
 
         // Received some kind of data
         if (poll(pfds, 1, 0) == 1){
-            handle_data(sockfd, players, &id_count); // handle data
+            handle_data(sockfd, players, &id_count, treasure); // handle data
         }        
     }
 }
