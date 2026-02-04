@@ -6,6 +6,7 @@
 #include "./utils/player.h"
 #include "./utils/buffer_manipulation.h"
 #include "./common.h"
+#include "./utils/time_custom.h"
 
 // Standard socket/server libraries
 #include <string.h>
@@ -20,6 +21,17 @@
 // Custom terminal logic libraries
 #include <termios.h>
 #include <fcntl.h>
+
+struct User {
+    int x;
+    int y;
+    int score;
+    unsigned char name[MAXUSERNAME];
+
+    struct Treasure *treasure;
+};
+
+
 
 /*
  * set_nonblocking_mode() -- Sets the terminal to non-canonical and non-echoing
@@ -118,7 +130,7 @@ void send_packet(int sockfd, struct addrinfo *p, unsigned char packet[MAXBUFSIZE
 /*
  * update_username() -- prompt for new username, update the locally stored username, then send an update to the server
  */
-void update_username(int sockfd, struct addrinfo *p, struct termios *original_settings, unsigned char myname[MAXUSERNAME]){
+void update_username(int sockfd, struct addrinfo *p, struct termios *original_settings, struct User *user){
     unsigned char new_name[MAXUSERNAME];
 
     restore_normal_terminal(original_settings);
@@ -133,8 +145,8 @@ void update_username(int sockfd, struct addrinfo *p, struct termios *original_se
     }
 
     printf("new name: %s\n", new_name);
-    memset(myname, 0, MAXUSERNAME);
-    strcpy(myname, new_name);
+    memset(user->name, 0, MAXUSERNAME);
+    strcpy(user->name, new_name);
 
     unsigned char update[MAXBUFSIZE];
     strncpy(update, new_name, MAXUSERNAME);
@@ -148,11 +160,11 @@ void update_username(int sockfd, struct addrinfo *p, struct termios *original_se
 /*
  * reset_coords() -- reset local coordinates to (0,0), and send a reset request to the server.
  */
-void reset_coords(int sockfd, struct addrinfo *p, int *x, int *y){
+void reset_coords(int sockfd, struct addrinfo *p, struct User *user){
     unsigned char update[MAXBUFSIZE];
 
-    *x = 0;
-    *y = 0;
+    user->x = 0;
+    user->y = 0;
 
     prepend_i16(update, RESET_COORDS);
     prepend_i16(update, COMMAND_ID);
@@ -172,6 +184,101 @@ void print_cmd_help(){
     printf("\n");
 }
 
+char* get_x_y_symbol(struct Players *players, int x, int y){
+    struct Player *cur = players->head;
+
+    for (cur; cur != NULL; cur = cur->next){
+        if (cur->x == x && cur->y == y){
+            return PLAYER_SYMBOL2;
+        }
+    }
+
+    return EMPTY_SYMBOL;
+}
+
+void print_gamestate(struct Players *players, struct User *user){
+    struct Player *cur = players->head;
+
+    printf("\nTreasure: (%d,%d) - %d point", user->treasure->x, user->treasure->y, user->treasure->value);
+    if(user->treasure->value > 1){
+        printf("s");
+    }
+    printf("\n");
+    
+    printf("________________________________________\n");
+    printf("|  Player     |   Coords    |  Score   |\n");
+    printf("|_____________|_____________|__________|\n");
+
+    printf("|  %-6.6s     |  (%+-2.2d,%+-2.2d)  |  %-2.2d pts  |\n", user->name, user->x, user->y, user->score);
+    printf("|_____________|_____________|__________|\n");
+
+    if (cur != NULL){
+        for (cur; cur != NULL; cur = cur->next){
+            printf("|  %-6.6s     |  (%+-2.2d,%+-2.2d)  |  %-2.2d pts  |\n", cur->username, cur->x, cur->y, cur->score);
+        }
+        printf("|_____________|_____________|__________|\n\n");
+    }
+
+    int y_start = 9;
+    int x_start = 0;
+
+    int treasure_x = user->treasure->x;
+    int treasure_y = user->treasure->y;
+
+    if (user->x < 5){
+        x_start = 0;
+    } else if (user->x > BOUNDX-5){
+        x_start = BOUNDX - 9;
+    } else {
+        x_start = user->x - 5;
+    }
+
+    if (user->y < 5){
+        y_start = 9;
+    } else if (user->y > BOUNDY-5){
+        y_start = BOUNDY;
+    } else {
+        y_start = user->y + 5;
+    }
+
+    
+
+    for (int y = y_start; y > y_start-10; y--){
+        for (int x = x_start; x < x_start+10; x++){
+            if (x==0 || y==0 || x==BOUNDX || y==BOUNDY){
+                printf("%s ", BOUNDARY_SYMBOL);
+                continue;
+            }
+            if (x==user->x && y==user->y){
+                printf("%s ", PLAYER_SYMBOL);
+                continue;
+            }
+            if (x==treasure_x && y==treasure_y){
+                printf("%s ", TREASURE_SYMBOL);
+                continue;
+            }
+
+            unsigned char *symbol = get_x_y_symbol(players, x, y);
+
+            if (*symbol == 'e'){
+                printf("%s ", symbol);
+                continue;
+            }
+
+            if ((x % 2 == 1 && y % 2 == 1)){
+                if ( ((int)pow(y,((int)pow(x,y) % 13)) * (int)pow(x,((int)pow(y,x) % 13)) * (int)pow(x,((int)pow(x,623) % 13)) * (int)pow(23,((int)pow(125643,x) % 13))) % 13 == 4 ){
+                    printf("%s ", ".");
+                    continue;
+                }
+                printf("%s ", symbol);
+                continue;
+            }
+
+            printf("  ");
+        }
+        printf("\n");
+    }
+}
 /*
  * handle_shutdown() -- handles shutting down the client server cleanly. Resets terminal settings, sends exit code to server, and closes the socket.
  */
@@ -192,7 +299,7 @@ void handle_shutdown(int sockfd, struct termios *original_settings, struct addri
 /*
  * handle_command() -- unpack a command, determine correct command type, then handle command logic
  */
-void handle_command(int sockfd, struct addrinfo *p, unsigned char command[MAXCOMMANDSIZE], struct termios *original_settings, unsigned char myname[MAXUSERNAME], int *x, int *y){
+void handle_command(int sockfd, struct addrinfo *p, unsigned char command[MAXCOMMANDSIZE], struct termios *original_settings, struct User *user){
 
     if (strcmp(command, "/help") == 0){
         print_cmd_help();
@@ -200,7 +307,7 @@ void handle_command(int sockfd, struct addrinfo *p, unsigned char command[MAXCOM
     }
 
     if (strcmp(command, "/updatename") == 0){
-        update_username(sockfd, p, original_settings, myname);
+        update_username(sockfd, p, original_settings, user);
         return;
     }
 
@@ -210,7 +317,7 @@ void handle_command(int sockfd, struct addrinfo *p, unsigned char command[MAXCOM
     }
 
     if (strcmp(command, "/reset") == 0){
-        reset_coords(sockfd, p, x, y);
+        reset_coords(sockfd, p, user);
         return;
     }
 
@@ -220,7 +327,7 @@ void handle_command(int sockfd, struct addrinfo *p, unsigned char command[MAXCOM
 /*
  * handle_keypress() -- handles keypress logic - commands, quitting, and 'wasd' movements
  */
-int handle_keypress(int sockfd, struct addrinfo *p, char input, int *x, int *y, struct termios *original_settings, unsigned char myname[MAXUSERNAME]){
+int handle_keypress(int sockfd, struct addrinfo *p, char input, struct termios *original_settings, struct User *user){
     if (input == 'q'){
         printf("Thanks for stopping by!\n");
         return 0;
@@ -241,19 +348,19 @@ int handle_keypress(int sockfd, struct addrinfo *p, char input, int *x, int *y, 
             len--;
         }
 
-        handle_command(sockfd, p, commmand, original_settings, myname, x, y);
+        handle_command(sockfd, p, commmand, original_settings, user);
         set_nonblocking_mode();
     }
 
     unsigned char update[MAXBUFSIZE];
 
-    if (input == 'w') (*y)++; 
-    if (input == 'a') (*x)--;
-    if (input == 's') (*y)--;
-    if (input == 'd') (*x)++;
+    if (input == 'w') user->y++; 
+    if (input == 'a') user->x--;
+    if (input == 's') user->y--;
+    if (input == 'd') user->x++;
 
 
-    construct_update_packet(update, *x, *y);
+    construct_update_packet(update, user->x, user->y);
     send_packet(sockfd, p, update, 8);
     return 1;
 }
@@ -261,7 +368,7 @@ int handle_keypress(int sockfd, struct addrinfo *p, char input, int *x, int *y, 
 /*
  * handle_startup() -- initial client server setup - requests user's username and sends first connecting message to the server
  */
-void handle_startup(int sockfd, struct addrinfo *p, unsigned char myname[MAXUSERNAME]){
+void handle_startup(int sockfd, struct addrinfo *p, struct User *user){
     size_t input_len;
     unsigned char input[MAXBUFSIZE];
     
@@ -269,40 +376,44 @@ void handle_startup(int sockfd, struct addrinfo *p, unsigned char myname[MAXUSER
     fgets(input, MAXBUFSIZE - 4, stdin);
 
     input_len = strlen(input);
-    strncat(myname, input, MAXUSERNAME);
+    strcat(user->name, input);
 
     prepend_i16(input, UPDATE_ID);
     prepend_i16(input, APPID);
     send_packet(sockfd, p, input, input_len + 4);
-
 }
 
 /*
  * handle_position_update() -- unpack and handle all positional updates for all players. Prints all coordinate data to the terminal (game state)
  */
-void handle_position_update(struct Players *players, unsigned char buf[MAXBUFSIZE], int bytes_received, unsigned char myname[MAXUSERNAME], int *my_x, int *my_y){
+void handle_position_update(struct Players *players, unsigned char buf[MAXBUFSIZE], int bytes_received, struct User *user){
     int offset = STARTING_OFFSET;
 
-    printf("\n=== Current Positions ===\n");
+    //printf("\n=== Current Positions ===\n");
     while (offset < bytes_received){
         int id = unpacki16(buf+offset); offset += 2;
         int x = unpacki16(buf+offset); offset += 2;
         int y = unpacki16(buf+offset); offset += 2;
+        int score = unpacki16(buf+offset); offset += 2;
 
         struct Player *player = get_player_by_id(players, id);
         if (player == NULL){
-            printf("(YOU) %s: (%d, %d)\n", myname, x, y);
-            (*my_x) = x;
-            (*my_y) = y;
+            // printf("(YOU) %s: (%d, %d) - Score: %d\n", user->name, x, y, score);
+            user->x = x;
+            user->y = y;
+            user->score = score;
+
             continue;
         }
 
         player->x = x;
         player->y = y;
+        player->score = score;
 
-
-        printf("%s: (%d, %d)\n", player->username, x, y);
+        //printf("%s: (%d, %d) - Score: %d\n", player->username, x, y, score);
     }
+
+    print_gamestate(players, user);
 }
 
 /*
@@ -329,9 +440,29 @@ void handle_user_update(struct Players *players, unsigned char buf[MAXBUFSIZE], 
 }
 
 /*
+ * handle_player_disconnect() -- removes a player from the player struct once the server notifies it that that client has disconnected
+ */
+void handle_player_disconnect(struct Players *players, unsigned char buf[MAXBUFSIZE]){
+    int id = unpacki16(buf+STARTING_OFFSET);
+    remove_player(players, id);
+}
+
+void handle_treasure(struct User *user, unsigned char buf[MAXBUFSIZE]){
+    int offset = STARTING_OFFSET;
+
+    int treasure_x = unpacki16(buf+offset); offset += 2;
+    int treasure_y = unpacki16(buf+offset); offset += 2;
+    int treasure_value = unpacki16(buf+offset); offset += 2;
+
+    user->treasure->x = treasure_x;
+    user->treasure->y = treasure_y;
+    user->treasure->value = treasure_value;
+}
+
+/*
  * handle_data() -- given data from the server, unpack and determine legitimacy, then determine data type and call corresponding functions
  */
-void handle_data(int sockfd, struct addrinfo *p, struct Players *players, unsigned char myname[MAXUSERNAME], int *x, int *y){
+void handle_data(int sockfd, struct addrinfo *p, struct Players *players, struct User *user){
     int bytes_received;
     unsigned char buf[MAXBUFSIZE];
 
@@ -347,12 +478,20 @@ void handle_data(int sockfd, struct addrinfo *p, struct Players *players, unsign
     }
 
     if (msg_id == UPDATE_ID){
-        handle_position_update(players, buf, bytes_received, myname, x, y);
+        handle_position_update(players, buf, bytes_received, user);
         return;
     }
 
     if (msg_id == USERUPDATE_ID){
         handle_user_update(players, buf, bytes_received);
+    }
+
+    if (msg_id == EXIT_ID){
+        handle_player_disconnect(players, buf);
+    }
+
+    if (msg_id == TREASURE_ID){
+        handle_treasure(user, buf);
     }
 }
 
@@ -368,15 +507,16 @@ int main(void)
 {
     struct addrinfo *p;
     int sockfd = get_serversock(&p);
-    unsigned char myname[MAXUSERNAME];
     unsigned char buf[MAXBUFSIZE];
 
     struct Players *players = malloc(sizeof *players);
     players->head = NULL;
     players->total_players = 0;
 
-    int x = 0;
-    int y = 0;
+    struct User *user = malloc(sizeof *user);
+    user->x = 0;
+    user->y = 0;
+    user->treasure = malloc(sizeof (struct Treasure));
 
     struct pollfd *pfds = malloc(sizeof *pfds);
     pfds[0].fd = sockfd;
@@ -387,24 +527,62 @@ int main(void)
     struct termios original_settings;
     tcgetattr(STDIN_FILENO, &original_settings);
 
-    handle_startup(sockfd, p, myname);
+    handle_startup(sockfd, p, user);
+
+    int botmode = 0;
+    int last_tick = 0;
+    int next_move = rand() % 500;
+    if (strcmp(user->name, "bot\n") == 0){
+        printf("botmode on!\n");
+        botmode = 1;
+    }
+
     set_nonblocking_mode();
 
-    int len = strlen(myname);
-    while (len > 0 && (myname[len-1] == '\r' || myname[len-1] == '\n')) {
-        myname[len-1] = '\0';
+    int len = strlen(user->name);
+    while (len > 0 && (user->name[len-1] == '\r' || user->name[len-1] == '\n')) {
+        user->name[len-1] = '\0';
         len--;
     }
     
     while (1){
         char input;
         int n = read(STDIN_FILENO, &input, 1);
-        if (n > 0 && handle_keypress(sockfd, p, input, &x, &y, &original_settings, myname) == 0) {
+        if (n > 0 && handle_keypress(sockfd, p, input, &original_settings, user) == 0) {
             break;
         }
 
+        if (botmode == 1 && interval_elapsed_cur(last_tick, next_move) == 1){
+            unsigned char botmove = 'w';
+            int random = rand() % 2;
+
+            if (user->x > user->treasure->x){
+                if (random == 1 && user->y != user->treasure->y){
+                    botmove = user->y > user->treasure->y ?  's' : 'w';
+                } else {
+                    botmove = 'a';
+                }
+            } else if (user->x <= user->treasure->x){
+                if (random == 1 && user->y != user->treasure->y){
+                    botmove = user->y > user->treasure->y ?  's' : 'w';
+                } else {
+                    botmove = 'd';
+                }
+            } else {
+                botmove = random == 1 ? 'w' : 'd';
+            }
+
+            handle_keypress(sockfd, p, botmove, &original_settings, user);
+            if (user->score > 5){
+                next_move = rand() % 250 + 50;
+            } else {
+                next_move = rand() % 450 + 50;
+            }
+            last_tick = get_time_ms();
+        }
+
         if (poll(pfds, 1, 0) > 0){
-            handle_data(sockfd, p, players, myname, &x, &y);
+            handle_data(sockfd, p, players, user);
         }
     }
 
