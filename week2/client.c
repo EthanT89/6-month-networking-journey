@@ -266,11 +266,11 @@ void print_gamestate(struct Players *players, struct User *user){
             }
 
             if ((x % 2 == 1 && y % 2 == 1)){
-                if ( ((int)pow(y,((int)pow(x,y) % 13)) * (int)pow(x,((int)pow(y,x) % 13)) * (int)pow(x,((int)pow(x,623) % 13)) * (int)pow(23,((int)pow(125643,x) % 13))) % 13 == 4 ){
+                if ( x % 4 == 1 && y % 4 == 1){
                     printf("%s ", ".");
                     continue;
                 }
-                printf("%s ", symbol);
+                printf("%s ", ",");
                 continue;
             }
 
@@ -327,7 +327,7 @@ void handle_command(int sockfd, struct addrinfo *p, unsigned char command[MAXCOM
 /*
  * handle_keypress() -- handles keypress logic - commands, quitting, and 'wasd' movements
  */
-int handle_keypress(int sockfd, struct addrinfo *p, char input, struct termios *original_settings, struct User *user){
+int handle_keypress(int sockfd, struct addrinfo *p, char input, struct termios *original_settings, struct User *user, int *last_tick){
     if (input == 'q'){
         printf("Thanks for stopping by!\n");
         return 0;
@@ -362,6 +362,7 @@ int handle_keypress(int sockfd, struct addrinfo *p, char input, struct termios *
 
     construct_update_packet(update, user->x, user->y);
     send_packet(sockfd, p, update, 8);
+    *last_tick = get_time_ms();
     return 1;
 }
 
@@ -548,7 +549,8 @@ int main(void)
     while (1){
         char input;
         int n = read(STDIN_FILENO, &input, 1);
-        if (n > 0 && handle_keypress(sockfd, p, input, &original_settings, user) == 0) {
+        if (n > 0 && interval_elapsed_cur(last_tick, botmode==1 ? 1 : 100) == 1 && handle_keypress(sockfd, p, input, &original_settings, user, &last_tick) == 0) {
+            
             break;
         }
 
@@ -572,13 +574,12 @@ int main(void)
                 botmove = random == 1 ? 'w' : 'd';
             }
 
-            handle_keypress(sockfd, p, botmove, &original_settings, user);
+            handle_keypress(sockfd, p, botmove, &original_settings, user, &last_tick);
             if (user->score > 5){
-                next_move = rand() % 250 + 50;
-            } else {
                 next_move = rand() % 450 + 50;
+            } else {
+                next_move = rand() % 250 + 50;
             }
-            last_tick = get_time_ms();
         }
 
         if (poll(pfds, 1, 0) > 0){

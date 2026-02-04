@@ -19,8 +19,8 @@
 
 void gen_new_treasure(struct Treasure *treasure){
     srand(time(NULL));
-    treasure->x = rand() % BOUNDX-2 + 1;
-    treasure->y = rand() % BOUNDY-2 + 1;
+    treasure->x = (rand() % (BOUNDX-2)) + 1;
+    treasure->y = (rand() % (BOUNDY-2)) + 1;
 
     treasure->value = (rand() % (MAXTREASUREVAL-1)) + 1;
 }
@@ -171,7 +171,7 @@ void handle_new_connection(int sockfd, struct Players *players, struct sockaddr_
     new_player->addr = addr;
     new_player->addrlen = addr_len;
     new_player->id = (*id_count)++;
-    new_player->score = 2;
+    new_player->score = 0;
     new_player->x = (rand() % BOUNDX-2) + 1;
     new_player->y = (rand() % BOUNDY-2) + 1;
 

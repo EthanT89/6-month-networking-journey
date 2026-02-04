@@ -25,7 +25,7 @@
 #define BOUNDARY_SYMBOL "X"
 #define PLAYER_SYMBOL "o"
 #define PLAYER_SYMBOL2 "e"
-#define EMPTY_SYMBOL "*"
+#define EMPTY_SYMBOL "."
 #define TREASURE_SYMBOL "$"
 
 // Commands INT form
