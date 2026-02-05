@@ -2,7 +2,7 @@
 
 **A 6-month deep work project to learn real-time networked systems in C.**
 
-20 years old. Computer Science student at UC Irvine. Summer 2026 Roblox Software Engineering Intern.
+20 years old. Computer Science and Engineering student at UC Irvine. Software Engineer at First American
 
 I'm learning how multiplayer games actually work by building networking systems from the ground up—no frameworks, no game engines, just C and the fundamentals.
 
@@ -10,7 +10,7 @@ I'm learning how multiplayer games actually work by building networking systems 
 
 ## What This Is
 
-This repository contains everything I've built during my 6-month commitment to learning real-time networked systems. Every day at 2pm, I sit down for 2.5 hours of focused work. No phone. No distractions. Just building.
+This repository contains everything I've built during my 6-month commitment to learning real-time networked systems. Every weekday at 2pm, I sit down for 2.5 hours of focused work. No phone. No distractions. Just building.
 
 I'm documenting the entire journey through weekly blog posts and this code. The goal isn't just to learn networking concepts—it's to build the discipline to show up every single day and do hard things.
 
@@ -54,6 +54,16 @@ I'm documenting the entire journey through weekly blog posts and this code. The 
 - Multiple clients moving in real-time, seeing each other's positions
 - Binary network protocol with efficient packing
 - *Lesson: Applying fundamentals feels different than learning them*
+
+**Week 6: Multiplayer Treasure Hunt Game**
+- Transformed movement server into a competitive treasure hunting game
+- Dynamic treasure spawning system (up to 80 concurrent treasures with varying point values)
+- Moving 10x10 viewport that follows player on 100x100 map
+- Server-side collision detection and validation
+- AI bot mode with pathfinding to nearest treasure
+- Connection limits (max 12 players) with graceful rejection handling
+- ~1,628 lines of modular C code across 6 utility files
+- *Lesson: NULL pointer guards everywhere, and stdout buffering will betray you during segfaults*
 
 ---
 
@@ -107,6 +117,10 @@ By the end of 6 months:
 - Binary network protocols (bit packing/unpacking)
 - Client-side interpolation
 - Non-blocking input handling
+- Game state management (linked-list structures for players and treasures)
+- Dynamic viewport rendering
+- Server-authoritative collision detection
+- Pathfinding algorithms (Euclidean distance-based)
 
 ---
 
@@ -118,7 +132,7 @@ Each week's project has its own README with build and run instructions.
 
 ```bash
 cd week#_project_name/
-make
+gcc ... # specific gcc cmd for each file, found in that project's readme
 ./server      # Terminal 1
 ./client      # Terminal 2
 ./client      # Terminal 3 (for multi-client projects)
@@ -161,11 +175,11 @@ If you're reading this and thinking about starting your own deep work project: j
 
 ## Progress Tracking
 
-**Days completed:** 25/180 (Month 2, Day 25)
+**Days completed:** 29/180 (Month 2, Day 29)
 
-**Current streak:** 25 days
+**Current streak:** 29 days
 
-**Projects shipped:** 2 (Chat server, Movement server)
+**Projects shipped:** 3 (Chat server, Movement server, Treasure Hunt game)
 
 **Blog posts:** 5 (Weeks 1-5)
 
@@ -173,9 +187,9 @@ If you're reading this and thinking about starting your own deep work project: j
 
 ## What's Next
 
-**Week 6 (Planned):** Client prediction - Make your own movement feel instant while still syncing with server
+**Week 7 (Planned):** Client prediction - Make your own movement feel instant while still syncing with server
 
-**Week 7-8 (Planned):** Networking tools - Build profilers, visualizers, or lag simulators
+**Week 8 (Planned):** Networking tools - Build profilers, visualizers, or lag simulators
 
 **Month 3-6:** TBD - Depends on what I learn in Month 2
 
@@ -189,6 +203,6 @@ This is hard. But it's worth it.
 
 ---
 
-**Last updated:** January 30, 2026 (Month 2, Week 5)
+**Last updated:** February 5, 2026 (Month 2, Week 6)
 
-**Next session:** Monday, 2pm, same table.
+**Next session:** Friday, 2pm, same table.
