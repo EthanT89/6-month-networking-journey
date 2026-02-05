@@ -49,6 +49,23 @@ void broadcast_treasure(struct State *state, struct Treasure *treasure){
 }
 
 /*
+ * broadcast_treasure_removal() -- send an update to all connected users indicating a treasure has been removed (collected). sends id to users
+ */
+void broadcast_treasure_removal(struct State *state, int id){
+    unsigned char update[MAXBUFSIZE];
+    int offset = 0;
+
+    packi16(update+offset, APPID); offset += 2;
+    packi16(update+offset, DELTREASURE_ID); offset += 2;
+    packi16(update+offset, id); offset += 2;
+
+    struct Player *cur = state->players->head;
+    for (cur; cur != NULL; cur = cur->next){
+        sendto(state->sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
+    }
+}
+
+/*
  * gen_new_treasure() -- populates a treasure struct with random x,y coordinates and a score value. x,y are bounded within BOUNDX and BOUNDY
  * value is bounded 1-3 points.
  */
@@ -66,6 +83,9 @@ void gen_new_treasure(struct State *state){
     broadcast_treasure(state, treasure);
 }
 
+/*
+ * create_initial_treasures() -- create MAXTREASURES treasures and add them to the treasures struct
+ */
 void create_initial_treasures(struct State *state){
     for (int i = 0; i < MAXTREASURES; i++){
         gen_new_treasure(state);
@@ -247,6 +267,7 @@ void handle_new_connection(int sockfd, struct sockaddr_in addr, socklen_t addr_l
 int validate_movement(int sockfd, struct State *state, struct Player *player, int x, int y){
     int valid = 1;
 
+    // check for player collisions
     struct Player *cur = state->players->head;
     for (cur; cur != NULL; cur = cur->next){
         if (cur->id == player->id){
@@ -257,7 +278,8 @@ int validate_movement(int sockfd, struct State *state, struct Player *player, in
             break;
         }
     }
-
+    
+    // Check for invalid movements
     if (valid == 1 && (abs(x - player->x) > 2 || abs(y - player->y) > 2)){ // Too many movements at once (cheating)
         valid = 0;
     } else if (valid == 1 && (x == 0 || x == BOUNDX || y == 0 || y == BOUNDY)){ // Out of bounds
@@ -273,12 +295,14 @@ int validate_movement(int sockfd, struct State *state, struct Player *player, in
         packi16(update+2, UPDATE_ID);
 
         int offset = 4;
-
+        // TODO MAYBE SEND SCORE AS WELL
         packi16(update+offset, player->id);
         offset += 2;
         packi16(update+offset, player->x);
         offset += 2;
         packi16(update+offset, player->y);
+        offset += 2;
+        packi16(update+offset, player->score);
         offset += 2;
 
         sendto(sockfd, update, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
@@ -288,20 +312,9 @@ int validate_movement(int sockfd, struct State *state, struct Player *player, in
     return 1;
 }
 
-void broadcast_treasure_removal(struct State *state, int id){
-    unsigned char update[MAXBUFSIZE];
-    int offset = 0;
-
-    packi16(update+offset, APPID); offset += 2;
-    packi16(update+offset, DELTREASURE_ID); offset += 2;
-    packi16(update+offset, id); offset += 2;
-
-    struct Player *cur = state->players->head;
-    for (cur; cur != NULL; cur = cur->next){
-        sendto(state->sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
-    }
-}
-
+/*
+ * check_for_treasure() -- check if a player's coordinates overlap with any treasures, if so, broadcast the removal and update the user's points
+ */
 void check_for_treasure(struct State *state, struct Player *player){
     struct Treasure *cur = state->treasures->head;
 

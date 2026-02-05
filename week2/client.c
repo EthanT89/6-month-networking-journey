@@ -23,6 +23,9 @@
 #include <termios.h>
 #include <fcntl.h>
 
+/*
+ * User -- local struct for managing user-specific game state - coordinates, score, username, and a local copy of the current treasures
+ */
 struct User {
     int x;
     int y;
@@ -31,8 +34,6 @@ struct User {
 
     struct Treasures *treasures;
 };
-
-
 
 /*
  * set_nonblocking_mode() -- Sets the terminal to non-canonical and non-echoing
@@ -185,6 +186,10 @@ void print_cmd_help(){
  * TODO: clean up logic and code for EMPTY_SYMBOL's
  */
 
+ /*
+  * get_x_y_symbol() -- given a coordinate, cross check against current data - treasures, players, and empty spaces, then return
+  * the corresponding symbol. Used in tandem with print_gamestate()
+  */
 char* get_x_y_symbol(struct User *user, struct Players *players, int x, int y){
     struct Player *cur = players->head;
 
@@ -211,6 +216,10 @@ char* get_x_y_symbol(struct User *user, struct Players *players, int x, int y){
     return EMPTY_SYMBOL;
 }
 
+/*
+ * find_nearest_treasure() -- Given a user struct, extract their coordinates and the coordinates of every active treasure. Then,
+ * compare the vector distance from the user to every treasure, and return the treasure with the shortest vector distance.
+ */
 struct Treasure* find_nearest_treasure(struct User *user){
     // logic to find nearest treasure
     if (user == NULL || user->treasures == NULL || user->treasures->head == NULL){
@@ -282,7 +291,6 @@ void print_gamestate(struct Players *players, struct User *user){
     printf("________________________________________\n");
     printf("|  Player     |   Coords    |  Score   |\n");
     printf("|_____________|_____________|__________|\n");
-
     printf("|  %-6.6s     |  (%+-2.2d,%+-2.2d)  |  %-2.2d pts  |\n", user->name, user->x, user->y, user->score);
     printf("|_____________|_____________|__________|\n");
 
@@ -303,26 +311,26 @@ void print_gamestate(struct Players *players, struct User *user){
         treasure_y = nearest_treasure->y;
     }
 
-    if (user->x < 5){
+    if (user->x < 5){ // User is within 5 units of the leftmost wall.
         x_start = 0;
-    } else if (user->x > BOUNDX-5){
+    } else if (user->x > BOUNDX-5){ // User is within 5 units of the rightmost wall.
         x_start = BOUNDX - 9;
-    } else {
+    } else { // User is farther than 5 units from any wall.
         x_start = user->x - 5;
     }
 
-    if (user->y < 5){
+    // Set the initial printing y value. 
+    if (user->y < 5){ // User is within 5 units of the bottommost wall.
         y_start = 9;
-    } else if (user->y > BOUNDY-5){
+    } else if (user->y > BOUNDY-5){ // User is within 5 units of the topmost wall.
         y_start = BOUNDY;
-    } else {
+    } else { // User is farther than 5 units from any wall.
         y_start = user->y + 5;
     }
 
-    
-
-    for (int y = y_start; y > y_start-10; y--){
-        for (int x = x_start; x < x_start+10; x++){
+    // Loop through every coordinate within the range of y_start to y_start - 10, and x_start to x_start + 10, and print the corresponding symbol
+    for (int y = y_start; y > y_start-10; y--){ // Each row
+        for (int x = x_start; x < x_start+10; x++){ // Each column within a row
             if (x==0 || y==0 || x==BOUNDX || y==BOUNDY){
                 printf("%s ", BOUNDARY_SYMBOL);
                 continue;
@@ -333,10 +341,9 @@ void print_gamestate(struct Players *players, struct User *user){
             }
 
             unsigned char *symbol = get_x_y_symbol(user, players, x, y);
-
             printf("%s ", symbol);
         }
-        printf("\n");
+        printf("\n"); // Jump to next row
     }
 }
 
@@ -451,7 +458,7 @@ void handle_startup(int sockfd, struct addrinfo *p, struct User *user){
 void handle_position_update(struct Players *players, unsigned char buf[MAXBUFSIZE], int bytes_received, struct User *user){
     int offset = STARTING_OFFSET;
 
-    while (offset < bytes_received){
+    while (offset < bytes_received){ // Adaptable to variable amounts of player updates. 
         int id = unpacki16(buf+offset); offset += 2;
         int x = unpacki16(buf+offset); offset += 2;
         int y = unpacki16(buf+offset); offset += 2;
