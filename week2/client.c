@@ -555,6 +555,10 @@ void handle_remove_treasure(struct User *user, unsigned char buf[MAXBUFSIZE]){
     remove_treasure_by_id(user->treasures, treasure_id);
 }
 
+/*
+ * handle_error() -- handle any errors sent from the server. Right now, this is limited to a rejected connection
+ * due to the server being full. 12 players is the limit at the moment. 
+ */
 void handle_error(int sockfd, struct User *user, unsigned char buf[MAXBUFSIZE], struct termios *original_settings, struct addrinfo *p){
     int err_code = unpacki16(buf+STARTING_OFFSET);
 

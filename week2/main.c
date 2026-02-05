@@ -376,6 +376,10 @@ void handle_disconnection(int sockfd, struct State *state, int id){
     }
 }
 
+/*
+ * handle_reject_connection() -- reject a user's attempted connection for whatever reason. Currently limited to
+ * rejected due to the server being full
+ */
 void handle_reject_connection(int sockfd, struct sockaddr_in * addr, socklen_t addr_len){
     unsigned char buf[MAXCOMMANDSIZE];
     int offset = 0;
@@ -416,7 +420,7 @@ void handle_data(int sockfd, struct State *state){
     // Map sender to connected players, if no mapping is found, the sender is a new client
     struct Player *sender = get_player_by_addr(state->players, *their_addr);
     if (sender == NULL){
-        if (state->players->total_players >= MAXPLAYERS){
+        if (state->players->total_players >= MAXPLAYERS){ // server is full
             handle_reject_connection(sockfd, their_addr, their_len);
             return;
         }
