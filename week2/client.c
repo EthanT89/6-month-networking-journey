@@ -25,6 +25,12 @@
 
 /*
  * User -- local struct for managing user-specific game state - coordinates, score, username, and a local copy of the current treasures
+ *
+ * x - current x coordinate of the player
+ * y - current y coordinate of the player
+ * score - current accumulative score of the player
+ * name - the current player's username
+ * *treasures - a linked list of all the treasures currently in-game
  */
 struct User {
     int x;
@@ -362,6 +368,7 @@ void handle_shutdown(int sockfd, struct termios *original_settings, struct addri
     send_packet(sockfd, p, buf, 4);
 
     close(sockfd);
+    exit(1);
 }
 
 /*
@@ -538,6 +545,9 @@ void handle_treasure(struct User *user, unsigned char buf[MAXBUFSIZE]){
     add_treasure(user->treasures, new_treasure);
 }
 
+/*
+ * handle_remove_treasure() -- remove the indicated treasure from the treasures struct given it's ID
+ */
 void handle_remove_treasure(struct User *user, unsigned char buf[MAXBUFSIZE]){
     int offset = STARTING_OFFSET;
 
@@ -545,10 +555,20 @@ void handle_remove_treasure(struct User *user, unsigned char buf[MAXBUFSIZE]){
     remove_treasure_by_id(user->treasures, treasure_id);
 }
 
+void handle_error(int sockfd, struct User *user, unsigned char buf[MAXBUFSIZE], struct termios *original_settings, struct addrinfo *p){
+    int err_code = unpacki16(buf+STARTING_OFFSET);
+
+    if (err_code == REJECT_CONNECTION_ID){
+        printf("Connection rejected. Server is full.\n");
+        handle_shutdown(sockfd, original_settings, p);
+    }
+
+}
+
 /*
  * handle_data() -- given data from the server, unpack and determine legitimacy, then determine data type and call corresponding functions
  */
-void handle_data(int sockfd, struct addrinfo *p, struct Players *players, struct User *user){
+void handle_data(int sockfd, struct addrinfo *p, struct Players *players, struct User *user, struct termios *original_settings){
     int bytes_received;
     unsigned char buf[MAXBUFSIZE];
 
@@ -586,6 +606,10 @@ void handle_data(int sockfd, struct addrinfo *p, struct Players *players, struct
     if (msg_id == DELTREASURE_ID){
         handle_remove_treasure(user, buf);
         return;
+    }
+
+    if (msg_id == ERROR_ID){
+        handle_error(sockfd, user, buf, original_settings, p);
     }
 
     printf("? %d\n", msg_id);
@@ -691,7 +715,7 @@ int main(void)
         }
 
         if (poll(pfds, 1, 0) > 0){
-            handle_data(sockfd, p, players, user);
+            handle_data(sockfd, p, players, user, &original_settings);
         }
     }
 

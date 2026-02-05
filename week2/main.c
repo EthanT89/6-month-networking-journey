@@ -376,6 +376,17 @@ void handle_disconnection(int sockfd, struct State *state, int id){
     }
 }
 
+void handle_reject_connection(int sockfd, struct sockaddr_in * addr, socklen_t addr_len){
+    unsigned char buf[MAXCOMMANDSIZE];
+    int offset = 0;
+
+    packi16(buf+offset, APPID); offset += 2;
+    packi16(buf+offset, ERROR_ID); offset += 2;
+    packi16(buf+offset, REJECT_CONNECTION_ID); offset += 2;
+
+    sendto(sockfd, buf, offset, 0, (struct sockaddr*)addr, addr_len);
+}
+
 /*
  * handle_data() -- Given ANY data to read from the server socket, unpack, verify, and handle next actions for the data.
  */
@@ -405,6 +416,10 @@ void handle_data(int sockfd, struct State *state){
     // Map sender to connected players, if no mapping is found, the sender is a new client
     struct Player *sender = get_player_by_addr(state->players, *their_addr);
     if (sender == NULL){
+        if (state->players->total_players >= MAXPLAYERS){
+            handle_reject_connection(sockfd, their_addr, their_len);
+            return;
+        }
         if (msg_type == UPDATE_ID){
             printf("new connection!\n");
             handle_new_connection(sockfd, *their_addr, their_len, data, state);
