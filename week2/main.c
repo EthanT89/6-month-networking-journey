@@ -35,13 +35,14 @@ void broadcast_treasure(struct State *state, struct Treasure *treasure){
     int offset = 0;
 
     packi16(update+offset, APPID); offset += 2;
-    packi16(update+offset, TREASURE_ID); offset += 2;
+    packi16(update+offset, NEWTREASURE_ID); offset += 2;
     packi16(update+offset, treasure->id); offset += 2;
     packi16(update+offset, treasure->x); offset += 2;
     packi16(update+offset, treasure->y); offset += 2;
     packi16(update+offset, treasure->value); offset += 2;
 
     struct Player *cur = state->players->head;
+    // printf("broadcasting treasure: x:%d, y:%d, id:%d\n", treasure->x, treasure->y, treasure->id);
     for (cur; cur != NULL; cur = cur->next){
         sendto(state->sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
     }
@@ -54,8 +55,6 @@ void broadcast_treasure(struct State *state, struct Treasure *treasure){
 void gen_new_treasure(struct State *state){
     struct Treasure *treasure = malloc(sizeof *treasure);
 
-
-    srand(time(NULL));
     treasure->x = (rand() % (BOUNDX-2)) + 1;
     treasure->y = (rand() % (BOUNDY-2)) + 1;
     treasure->value = (rand() % (MAXTREASUREVAL-1)) + 1;
@@ -65,6 +64,12 @@ void gen_new_treasure(struct State *state){
 
     add_treasure(state->treasures, treasure);
     broadcast_treasure(state, treasure);
+}
+
+void create_initial_treasures(struct State *state){
+    for (int i = 0; i < MAXTREASURES; i++){
+        gen_new_treasure(state);
+    }
 }
 
 /*
@@ -283,13 +288,30 @@ int validate_movement(int sockfd, struct State *state, struct Player *player, in
     return 1;
 }
 
+void broadcast_treasure_removal(struct State *state, int id){
+    unsigned char update[MAXBUFSIZE];
+    int offset = 0;
+
+    packi16(update+offset, APPID); offset += 2;
+    packi16(update+offset, DELTREASURE_ID); offset += 2;
+    packi16(update+offset, id); offset += 2;
+
+    struct Player *cur = state->players->head;
+    for (cur; cur != NULL; cur = cur->next){
+        sendto(state->sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
+    }
+}
+
 void check_for_treasure(struct State *state, struct Player *player){
     struct Treasure *cur = state->treasures->head;
 
     for (cur; cur != NULL; cur = cur->next){
         if (player->x == (cur->x) && (player->y == cur->y)){
-            printf("%s got a treasure worth %d points!\n", player->username, cur->value);
+            printf("%s found a treasure worth %d points!\n", player->username, cur->value);
             player->score += cur->value;
+
+            broadcast_treasure_removal(state, cur->id);
+            remove_treasure_by_id(state->treasures, cur->id);
             gen_new_treasure(state);
             return;
         }
@@ -456,7 +478,9 @@ int main(void)
     state->treasure_id_ct = 1;
     state->treasures = treasures;
     state->players = players;
-    gen_new_treasure(state);
+    state->sockfd = sockfd;
+    
+    create_initial_treasures(state);
 
     unsigned char last_update[MAXBUFSIZE];
 

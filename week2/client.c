@@ -7,6 +7,7 @@
 #include "./utils/buffer_manipulation.h"
 #include "./common.h"
 #include "./utils/time_custom.h"
+#include "./utils/treasure.h"
 
 // Standard socket/server libraries
 #include <string.h>
@@ -28,7 +29,7 @@ struct User {
     int score;
     unsigned char name[MAXUSERNAME];
 
-    struct Treasure *treasure;
+    struct Treasures *treasures;
 };
 
 
@@ -95,14 +96,6 @@ int get_serversock(struct addrinfo **p){
         fprintf(stderr, "talker: failed to create socket\n");
         exit(1);
     }
-
-    unsigned char addr[MAXBUFSIZE];
-    inet_ntop(AF_INET, (*p)->ai_addr, addr, (*p)->ai_addrlen);
-    printf("setup server socket. sockfd: %d\n", sockfd);
-    if ((*p) != NULL){
-        printf("%s\n", addr);
-    }
-
     return sockfd;
 }
 
@@ -191,7 +184,8 @@ void print_cmd_help(){
  * Currently, the actual print function overrides the empty_symbol for alternating symbols.
  * TODO: clean up logic and code for EMPTY_SYMBOL's
  */
-char* get_x_y_symbol(struct Players *players, int x, int y){
+
+char* get_x_y_symbol(struct User *user, struct Players *players, int x, int y){
     struct Player *cur = players->head;
 
     for (cur; cur != NULL; cur = cur->next){
@@ -200,13 +194,56 @@ char* get_x_y_symbol(struct Players *players, int x, int y){
         }
     }
 
+    struct Treasure *treasure = user->treasures->head;
+    for (treasure; treasure != NULL; treasure = treasure->next){
+        if (treasure->x == x && treasure->y == y){
+            return TREASURE_SYMBOL;
+        }
+    }
+
+    if ((x % 2 == 1 && y % 2 == 1)){
+        if ( x % 4 == 1 && y % 4 == 1){
+            return ".";
+        }
+        return ",";
+    }
+
     return EMPTY_SYMBOL;
+}
+
+struct Treasure* find_nearest_treasure(struct User *user){
+    // logic to find nearest treasure
+    if (user == NULL || user->treasures == NULL || user->treasures->head == NULL){
+        return NULL;
+    }
+    int smallest_distance = -1;
+    struct Treasure *nearest = NULL;
+
+    struct Treasure *cur = user->treasures->head;
+    for (cur; cur != NULL; cur = cur->next){
+        int diff_x = abs(cur->x - user->x);
+        int diff_y = abs(cur->y - user->y);
+        int rel_distance = sqrt((diff_x*diff_x) + (diff_y*diff_y));
+
+        if (smallest_distance == -1){
+            smallest_distance = rel_distance;
+            nearest = cur;
+            continue;
+        }
+
+        if (rel_distance < smallest_distance){
+            smallest_distance = rel_distance;
+            nearest = cur;
+            continue;
+        }
+    }
+    return nearest;
 }
 
 /*
  * print_gamestate() -- print the latest gamestate into the structure that follows:
  *
- *  Treasure: (58,72) - 1 point                  // Current treasure coordinates and point value
+ *  Nearest Treasure: (58,72) - 1 point                  // Nearest treasure coordinates and point value
  *  ________________________________________
  *  |  Player     |   Coords    |  Score   |
  *  |_____________|_____________|__________|
@@ -230,12 +267,17 @@ char* get_x_y_symbol(struct Players *players, int x, int y){
  */
 void print_gamestate(struct Players *players, struct User *user){
     struct Player *cur = players->head;
+    struct Treasure *nearest_treasure = find_nearest_treasure(user);
 
-    printf("\nTreasure: (%d,%d) - %d point", user->treasure->x, user->treasure->y, user->treasure->value);
-    if(user->treasure->value > 1){
-        printf("s");
+    if (nearest_treasure == NULL){
+        printf("\nNearest Treasure: none\n");
+    } else {
+        printf("\nNearest Treasure: (%d,%d) - %d point", nearest_treasure->x, nearest_treasure->y, nearest_treasure->value);
+        if(nearest_treasure->value > 1){
+            printf("s");
+        }
+        printf("\n");
     }
-    printf("\n");
     
     printf("________________________________________\n");
     printf("|  Player     |   Coords    |  Score   |\n");
@@ -254,8 +296,12 @@ void print_gamestate(struct Players *players, struct User *user){
     int y_start = 9;
     int x_start = 0;
 
-    int treasure_x = user->treasure->x;
-    int treasure_y = user->treasure->y;
+    int treasure_x = -1;
+    int treasure_y = -1;
+    if (nearest_treasure != NULL){
+        treasure_x = nearest_treasure->x;
+        treasure_y = nearest_treasure->y;
+    }
 
     if (user->x < 5){
         x_start = 0;
@@ -285,28 +331,10 @@ void print_gamestate(struct Players *players, struct User *user){
                 printf("%s ", PLAYER_SYMBOL);
                 continue;
             }
-            if (x==treasure_x && y==treasure_y){
-                printf("%s ", TREASURE_SYMBOL);
-                continue;
-            }
 
-            unsigned char *symbol = get_x_y_symbol(players, x, y);
+            unsigned char *symbol = get_x_y_symbol(user, players, x, y);
 
-            if (*symbol == 'e'){
-                printf("%s ", symbol);
-                continue;
-            }
-
-            if ((x % 2 == 1 && y % 2 == 1)){
-                if ( x % 4 == 1 && y % 4 == 1){
-                    printf("%s ", ".");
-                    continue;
-                }
-                printf("%s ", ",");
-                continue;
-            }
-
-            printf("  ");
+            printf("%s ", symbol);
         }
         printf("\n");
     }
@@ -423,7 +451,6 @@ void handle_startup(int sockfd, struct addrinfo *p, struct User *user){
 void handle_position_update(struct Players *players, unsigned char buf[MAXBUFSIZE], int bytes_received, struct User *user){
     int offset = STARTING_OFFSET;
 
-    //printf("\n=== Current Positions ===\n");
     while (offset < bytes_received){
         int id = unpacki16(buf+offset); offset += 2;
         int x = unpacki16(buf+offset); offset += 2;
@@ -432,7 +459,6 @@ void handle_position_update(struct Players *players, unsigned char buf[MAXBUFSIZ
 
         struct Player *player = get_player_by_id(players, id);
         if (player == NULL){
-            // printf("(YOU) %s: (%d, %d) - Score: %d\n", user->name, x, y, score);
             user->x = x;
             user->y = y;
             user->score = score;
@@ -443,10 +469,8 @@ void handle_position_update(struct Players *players, unsigned char buf[MAXBUFSIZ
         player->x = x;
         player->y = y;
         player->score = score;
-
-        //printf("%s: (%d, %d) - Score: %d\n", player->username, x, y, score);
+        printf("..\n");
     }
-
     print_gamestate(players, user);
 }
 
@@ -457,6 +481,7 @@ void handle_user_update(struct Players *players, unsigned char buf[MAXBUFSIZE], 
     int offset = STARTING_OFFSET;
     int id = unpacki16(buf+offset); offset += 2;
     unsigned char username[MAXUSERNAME];
+    printf("in handle user update!!\n");
 
     strncpy(username, buf+offset, MAXUSERNAME);
     struct Player *player = get_player_by_id(players, id);
@@ -469,6 +494,7 @@ void handle_user_update(struct Players *players, unsigned char buf[MAXBUFSIZE], 
         add_player(players, player);
         return;
     }
+    printf("okayt\n");
 
     strcpy(player->username, username);
 }
@@ -487,13 +513,29 @@ void handle_player_disconnect(struct Players *players, unsigned char buf[MAXBUFS
 void handle_treasure(struct User *user, unsigned char buf[MAXBUFSIZE]){
     int offset = STARTING_OFFSET;
 
+    int treasure_id = unpacki16(buf+offset); offset += 2;
     int treasure_x = unpacki16(buf+offset); offset += 2;
     int treasure_y = unpacki16(buf+offset); offset += 2;
     int treasure_value = unpacki16(buf+offset); offset += 2;
 
-    user->treasure->x = treasure_x;
-    user->treasure->y = treasure_y;
-    user->treasure->value = treasure_value;
+    if (get_treasure_by_id(user->treasures, treasure_id) != NULL){
+        return;
+    }
+
+    struct Treasure *new_treasure = malloc(sizeof *new_treasure);
+
+    new_treasure->id = treasure_id;
+    new_treasure->x = treasure_x;
+    new_treasure->y = treasure_y;
+    new_treasure->value = treasure_value;
+    add_treasure(user->treasures, new_treasure);
+}
+
+void handle_remove_treasure(struct User *user, unsigned char buf[MAXBUFSIZE]){
+    int offset = STARTING_OFFSET;
+
+    int treasure_id = unpacki16(buf+offset); offset += 2;
+    remove_treasure_by_id(user->treasures, treasure_id);
 }
 
 /*
@@ -521,15 +563,25 @@ void handle_data(int sockfd, struct addrinfo *p, struct Players *players, struct
 
     if (msg_id == USERUPDATE_ID){
         handle_user_update(players, buf, bytes_received);
+        return;
     }
 
     if (msg_id == EXIT_ID){
         handle_player_disconnect(players, buf);
+        return;
     }
 
-    if (msg_id == TREASURE_ID){
+    if (msg_id == NEWTREASURE_ID){
         handle_treasure(user, buf);
+        return;
     }
+
+    if (msg_id == DELTREASURE_ID){
+        handle_remove_treasure(user, buf);
+        return;
+    }
+
+    printf("? %d\n", msg_id);
 }
 
 /*
@@ -550,10 +602,18 @@ int main(void)
     players->head = NULL;
     players->total_players = 0;
 
+
+    struct Treasures *treasures = malloc(sizeof *treasures);
+    treasures->count = 0;
+    treasures->head = NULL;
+
     struct User *user = malloc(sizeof *user);
     user->x = 0;
     user->y = 0;
-    user->treasure = malloc(sizeof (struct Treasure));
+    user->score = 0;
+    memset(user->name, 0, MAXUSERNAME);
+    user->treasures = treasures;
+
 
     struct pollfd *pfds = malloc(sizeof *pfds);
     pfds[0].fd = sockfd;
@@ -581,12 +641,12 @@ int main(void)
         user->name[len-1] = '\0';
         len--;
     }
+
     
     while (1){
         char input;
         int n = read(STDIN_FILENO, &input, 1);
         if (n > 0 && interval_elapsed_cur(last_tick, botmode==1 ? 1 : 100) == 1 && handle_keypress(sockfd, p, input, &original_settings, user, &last_tick) == 0) {
-            
             break;
         }
 
@@ -594,20 +654,25 @@ int main(void)
             unsigned char botmove = 'w';
             int random = rand() % 2;
 
-            if (user->x > user->treasure->x){
-                if (random == 1 && user->y != user->treasure->y){
-                    botmove = user->y > user->treasure->y ?  's' : 'w';
+            struct Treasure *treasure = find_nearest_treasure(user);
+            if (treasure == NULL){
+                continue;
+            }
+
+            if (user->x > treasure->x){
+                if (random == 1 && user->y != treasure->y){
+                    botmove = user->y > treasure->y ?  's' : 'w';
                 } else {
                     botmove = 'a';
                 }
-            } else if (user->x < user->treasure->x){
-                if (random == 1 && user->y != user->treasure->y){
-                    botmove = user->y > user->treasure->y ?  's' : 'w';
+            } else if (user->x < treasure->x){
+                if (random == 1 && user->y != treasure->y){
+                    botmove = user->y > treasure->y ?  's' : 'w';
                 } else {
                     botmove = 'd';
                 }
             } else {
-                if (user->y > user->treasure->y){
+                if (user->y > treasure->y){
                     botmove = 's';
                 } else {
                     botmove = 'w';
