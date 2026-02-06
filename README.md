@@ -175,9 +175,9 @@ If you're reading this and thinking about starting your own deep work project: j
 
 ## Progress Tracking
 
-**Days completed:** 29/180 (Month 2, Day 29)
+**Days completed:** 30/180 (Month 2, Day 30)
 
-**Current streak:** 29 days
+**Current streak:** 30 days
 
 **Projects shipped:** 3 (Chat server, Movement server, Treasure Hunt game)
 
@@ -203,6 +203,6 @@ This is hard. But it's worth it.
 
 ---
 
-**Last updated:** February 5, 2026 (Month 2, Week 6)
+**Last updated:** February 6, 2026 (Month 2, Week 6)
 
-**Next session:** Friday, 2pm, same table.
+**Next session:** Monday, 2pm, same table.
