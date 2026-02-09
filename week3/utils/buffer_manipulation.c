@@ -8,6 +8,10 @@
 #include <stdarg.h>
 #include <string.h>
 
+void packi8 (unsigned char *buf, unsigned int i){
+    *buf = i;
+}
+
 void packi16 (unsigned char *buf, unsigned int i){
     *buf++ = i>>8; *buf++ = i;
 }
