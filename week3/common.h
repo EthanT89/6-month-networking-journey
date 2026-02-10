@@ -10,7 +10,7 @@
 #define MYPORT "1209" // arbitrary port number (my birthday)
 #define MAXBACKLOG 10 // max clients waiting to connect
 #define MAXUSERNAME 15 // max length of a player username
-#define MAXBUFSIZE 100 // max size of a buffer (packet)
+#define MAXBUFSIZE 1000 // max size of a buffer (packet)
 #define MAXCOMMANDSIZE 15 // max size of a command message
 #define STARTING_OFFSET 4 // standard offset for packets (4 bytes for APPID and MSGTYPE)
 #define BOUNDX 100 // Size of map in the X plane
