@@ -59,6 +59,6 @@ struct Packet* peek_packet(struct Packets *packets);
 
 int is_empty_packets(struct Packets *packets);
 
-int ready_to_send(struct Packets *packets, struct Packet *packet);
+int ready_to_send(struct Packets *packets);
 
 #endif

@@ -8,6 +8,7 @@
 #include "./common.h"
 #include "./utils/time_custom.h"
 #include "./utils/treasure.h"
+#include "./proxy_v2/utils/proxy_utils.h"
 
 // Standard socket/server libraries
 #include <string.h>
@@ -121,7 +122,7 @@ void construct_update_packet(unsigned char packet[MAXBUFSIZE], int x, int y){
  * send_packet() -- given the necessary data, send a completed packet to the server
  */
 void send_packet(int sockfd, struct addrinfo *p, unsigned char packet[MAXBUFSIZE], int packet_size){
-    if (sendto(sockfd, packet, packet_size, 0, p->ai_addr, p->ai_addrlen) == -1){
+    if (send_proxy(sockfd, packet, packet_size, 0, p->ai_addr, p->ai_addrlen) == -1){
         perror("client: send\n");
         exit(1);
     }
@@ -583,7 +584,7 @@ void handle_data(int sockfd, struct addrinfo *p, struct Players *players, struct
     unsigned char buf[MAXBUFSIZE];
 
     memset(buf, 0, MAXBUFSIZE);
-    bytes_received = recvfrom(sockfd, buf, MAXBUFSIZE, 0, p->ai_addr, &p->ai_addrlen);
+    bytes_received = rec_proxy(sockfd, buf, MAXBUFSIZE, 0, p->ai_addr, &p->ai_addrlen);
 
     int app_id = unpacki16(buf);
     int msg_id = unpacki16(buf+2);

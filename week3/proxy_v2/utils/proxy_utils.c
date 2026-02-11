@@ -24,7 +24,7 @@ int send_proxy(int sockfd, unsigned char buf[MAXBUFSIZE], size_t buflen, int fla
 
     offset = prepend_address(addr, packet, buf, buflen);
 
-    printf("packed %d bytes for proxy\n", offset);
+    // printf("packed %d bytes for proxy\n", offset);
 
     if ((bytes_sent = sendto(sockfd, packet, offset, 0, (struct sockaddr*)&proxy_addr, sizeof(proxy_addr))) == -1){
         return -1;
@@ -56,5 +56,5 @@ int rec_proxy(int sockfd, unsigned char buf[MAXBUFSIZE], size_t buflen, int flag
     *addr_len = sizeof(*addr);
 
     memcpy(buf, packet+(*addr_len), bytes_received-(*addr_len));
-    return bytes_received;
+    return bytes_received - *addr_len;
 }

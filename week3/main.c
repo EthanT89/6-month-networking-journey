@@ -8,6 +8,7 @@
 #include "./utils/buffer_manipulation.h"
 #include "./common.h"
 #include "./utils/treasure.h"
+#include "./proxy_v2/utils/proxy_utils.h"
 
 // Standard socket/server libraries
 #include <string.h>
@@ -42,9 +43,8 @@ void broadcast_treasure(struct State *state, struct Treasure *treasure){
     packi16(update+offset, treasure->value); offset += 2;
 
     struct Player *cur = state->players->head;
-    // printf("broadcasting treasure: x:%d, y:%d, id:%d\n", treasure->x, treasure->y, treasure->id);
     for (cur; cur != NULL; cur = cur->next){
-        sendto(state->sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
+        send_proxy(state->sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
     }
 }
 
@@ -61,7 +61,7 @@ void broadcast_treasure_removal(struct State *state, int id){
 
     struct Player *cur = state->players->head;
     for (cur; cur != NULL; cur = cur->next){
-        sendto(state->sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
+        send_proxy(state->sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
     }
 }
 
@@ -166,7 +166,7 @@ void send_user_update_all(int sockfd, struct Players *players, struct Player *pl
         if (cur->id == player->id){
             continue;
         }
-        sendto(sockfd, update, strlen(update+6)+6, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
+        send_proxy(sockfd, update, strlen(update+6)+6, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
     }
 }
 
@@ -178,7 +178,7 @@ void send_all_users_data(int sockfd, struct Players *players, struct Player *pla
     for (cur; cur != NULL; cur = cur->next){
         unsigned char update[MAXBUFSIZE];
         construct_user_update_packet(cur, update);
-        sendto(sockfd, update, strlen(update+6)+6, 0, (struct sockaddr*)&player->addr, player->addrlen);
+        send_proxy(sockfd, update, strlen(update+6)+6, 0, (struct sockaddr*)&player->addr, player->addrlen);
     }
 }
 
@@ -282,7 +282,7 @@ int validate_movement(int sockfd, struct State *state, struct Player *player, in
     // Check for invalid movements
     if (valid == 1 && (abs(x - player->x) > 2 || abs(y - player->y) > 2)){ // Too many movements at once (cheating)
         valid = 0;
-    } else if (valid == 1 && (x == 0 || x == BOUNDX || y == 0 || y == BOUNDY)){ // Out of bounds
+    } else if (valid == 1 && (x <= 0 || x >= BOUNDX || y <= 0 || y >= BOUNDY)){ // Out of bounds
         valid = 0;
     }
     
@@ -305,7 +305,7 @@ int validate_movement(int sockfd, struct State *state, struct Player *player, in
         packi16(update+offset, player->score);
         offset += 2;
 
-        sendto(sockfd, update, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
+        send_proxy(sockfd, update, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
 
         return 0;
     }
@@ -351,6 +351,7 @@ void handle_update(struct Player *player, unsigned char data[MAXBUFSIZE], int so
     player->x = x;
     player->y = y;
 
+
     check_for_treasure(state, player);
 }
 
@@ -372,7 +373,7 @@ void handle_disconnection(int sockfd, struct State *state, int id){
 
     struct Player *cur = state->players->head;
     for (cur; cur != NULL; cur = cur->next){
-        sendto(sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
+        send_proxy(sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
     }
 }
 
@@ -388,7 +389,7 @@ void handle_reject_connection(int sockfd, struct sockaddr_in * addr, socklen_t a
     packi16(buf+offset, ERROR_ID); offset += 2;
     packi16(buf+offset, REJECT_CONNECTION_ID); offset += 2;
 
-    sendto(sockfd, buf, offset, 0, (struct sockaddr*)addr, addr_len);
+    send_proxy(sockfd, buf, offset, 0, (struct sockaddr*)addr, addr_len);
 }
 
 /*
@@ -402,7 +403,7 @@ void handle_data(int sockfd, struct State *state){
     int bytes_received;
 
     memset(data, 0, MAXBUFSIZE);
-    if ((bytes_received = recvfrom(sockfd, data, MAXBUFSIZE, 0, (struct sockaddr*)their_addr, &their_len)) == -1){
+    if ((bytes_received = rec_proxy(sockfd, data, MAXBUFSIZE, 0, (struct sockaddr*)their_addr, &their_len)) == -1){
         perror("server: recvfrom\n");
         exit(1);
     }
@@ -437,7 +438,6 @@ void handle_data(int sockfd, struct State *state){
     }
 
     if (msg_type == COMMAND_ID){
-        printf("received command!\n");
         handle_command(state, sender, data, sockfd);
         return;
     }
@@ -478,7 +478,7 @@ void broadcast_updates(int sockfd, struct State *state, unsigned char last_updat
 
     cur = state->players->head;
     for (cur; cur != NULL; cur = cur->next){
-        sendto(sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
+        send_proxy(sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
     }
 
     memcpy(last_update, update, MAXBUFSIZE);
@@ -494,6 +494,7 @@ void broadcast_updates(int sockfd, struct State *state, unsigned char last_updat
  */
 int main(void)
 {
+    printf("Starting server...\n");
     int last_tick = 0;
     int sockfd = get_socket();
 

@@ -18,6 +18,12 @@
 #include <poll.h>
 #include <netinet/in.h>
 
+struct Stats {
+    int packets_received;
+    int packets_forwarded;
+    int packets_dropped;
+};
+
 /*
  * get_socket() -- create a socket and return its file descriptor
  */
@@ -65,7 +71,7 @@ int get_socket(){
     return sockfd;
 }
 
-void handle_data(int sockfd, struct Packets *packets){
+void handle_data(int sockfd, struct Packets *packets, struct Stats *stats){
     unsigned char buf[MAXBUFSIZE];
     unsigned char final_packet[MAXBUFSIZE];
     unsigned char rawdata[MAXBUFSIZE];
@@ -83,6 +89,8 @@ void handle_data(int sockfd, struct Packets *packets){
         perror("proxy: recvfrom");
         return;
     }
+
+    stats->packets_received++;
 
     int offset = sizeof(struct sockaddr);
     memcpy(rawdata, buf+offset, bytes_received-offset);
@@ -106,16 +114,22 @@ void handle_data(int sockfd, struct Packets *packets){
     enqueue_packet(packets, packet);
 }
 
-void send_packet(int sockfd, struct Packet *packet){
+void send_packet(int sockfd, struct Packet *packet, struct Stats *stats){
+    if ((rand() % 100 + 1) < DROP_RATE){
+        stats->packets_dropped++;
+        return;
+    }
     int bytes_sent;
     if ((bytes_sent = sendto(sockfd, packet->data, packet->bytes, 0, packet->dest_addr, packet->dest_addrlen)) == -1){
         perror("proxy: sendto");
         return;
     }
+    stats->packets_forwarded++;
 }
 
-int main(){
+int main(int argc, char **argv){
     int sockfd = get_socket();
+    int last_update = 0;
 
     struct pollfd *pfds = malloc(sizeof *pfds);
     pfds[0].fd = sockfd;
@@ -128,11 +142,38 @@ int main(){
     packets->tail = NULL;
     packets->pkt_count = 0;
 
+    struct Stats *stats = malloc(sizeof *stats);
+    stats->packets_dropped = 0;
+    stats->packets_forwarded = 0;
+    stats->packets_received = 0;
+
+    if (argc > 1){
+        int delay;
+        sscanf(argv[1], "%d", &delay);
+        packets->delay_ms = delay;
+        printf("delay set to %dms\n", delay);
+    }
+
+    printf("setup complete!\n");
+
     while (1){
         if (poll(pfds, 1, 0) >= 1){
             printf("Received data. Routing...\n");
-
-            handle_data(sockfd, packets);
+            handle_data(sockfd, packets, stats);
         }
+
+
+        if (ready_to_send(packets) == 1){
+            send_packet(sockfd, pop_packet(packets), stats);
+        }
+
+        if (interval_elapsed_cur(last_update, 900) == 1){
+            printf("\n=== Current Stats ===\n");
+            printf("Packets Received: %d\n", stats->packets_received);
+            printf("Packets Forwarded: %d\n", stats->packets_forwarded);
+            printf("Packets Dropped: %d\n\n", stats->packets_dropped);
+            last_update = get_time_ms();
+        }
+
     }
 }

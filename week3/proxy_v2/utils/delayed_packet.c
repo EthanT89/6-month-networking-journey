@@ -39,6 +39,9 @@ int is_empty_packets(struct Packets *packets){
     return (packets->pkt_count > 0) ? 0 : 1;
 }
 
-int ready_to_send(struct Packets *packets, struct Packet *packet){
-    return interval_elapsed_cur(packet->time_received, packets->delay_ms);
+int ready_to_send(struct Packets *packets){
+    if (is_empty_packets(packets) == 0){
+        return interval_elapsed_cur(packets->head->time_received, packets->delay_ms);
+    }
+    return 0;
 }
