@@ -38,10 +38,19 @@
  * TLDR: These utilities prepend the destination address to the buffer and send that packet to the proxy, which handles it from there.
  */
 
+ /*
+  * prepend_address() -- given a packet and an address, populate the given buffer with the address+packet data
+  */
 int prepend_address(struct sockaddr *addr, unsigned char packet[MAXBUFSIZE], unsigned char buf[MAXBUFSIZE], size_t buflen);
 
+/*
+ * send_proxy() -- identical usage to sendto(), but prepends the intended address in the given packet, and sends through the proxy server
+ */
 int send_proxy(int sockfd, unsigned char buf[MAXBUFSIZE], size_t buflen, int flags, struct sockaddr *addr, socklen_t addr_len);
 
+/*
+ * rec_proxy() -- identical usage to recvfrom(), but extracts the prepended address from the packet and discards the proxy address
+ */
 int rec_proxy(int sockfd, unsigned char buf[MAXBUFSIZE], size_t buflen, int flags, struct sockaddr *addr, socklen_t *addr_len);
 
 #endif

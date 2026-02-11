@@ -1,5 +1,5 @@
 /*
- * delayed_packet.h -- Utilities and struct for delayed packets. Allows for the storage and use of delayed packets in a queue
+ * delayed_packet.h -- structures and logic for delayed packets. intended to be used with the proxy server in week 3
  */
 
 #ifndef DELAYED_PACKET_H
@@ -51,14 +51,29 @@ struct Packets {
     struct Packet *tail;
 };
 
+/*
+ * enqueue_packet() -- enqueue a packet to the packets struct. requires the packet to be constructed beforehand
+ */
 void enqueue_packet(struct Packets *packets, struct Packet *packet);
 
+/*
+ * pop_packet() -- pop off and return a pointer to the next packet in queue (FIFO)
+ */
 struct Packet* pop_packet(struct Packets *packets);
 
+/*
+ * peek_packet() -- return a const pointer to the next packet in queue
+ */
 struct Packet* peek_packet(struct Packets *packets);
 
+/*
+ * is_empty_packets() -- returns 1 if packets struct is empty, 0 otherwise
+ */
 int is_empty_packets(struct Packets *packets);
 
+/*
+ * ready_to_send() -- returns 1 if the next packet in queue is ready to be sent (delay finished), 0 otherwise
+ */
 int ready_to_send(struct Packets *packets);
 
 #endif
