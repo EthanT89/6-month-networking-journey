@@ -131,8 +131,9 @@ void handle_data(int sockfd, struct Packets *packets, struct Stats *stats){
 /*
  * send_packet() -- unpack a packet struct and send to the indicated destination
  */
-void send_packet(int sockfd, struct Packet *packet, struct Stats *stats){
-    if ((rand() % 100 + 1) < DROP_RATE){
+void send_packet(int sockfd, struct Packets *packets, struct Stats *stats){
+    struct Packet *packet = pop_packet(packets);
+    if ((rand() % 100 + 1) < packets->drop_rate){
         stats->packets_dropped++;
         return;
     }
@@ -174,6 +175,7 @@ int main(int argc, char **argv){
     packets->head = NULL;
     packets->tail = NULL;
     packets->pkt_count = 0;
+    packets->drop_rate = DROP_RATE;
 
     // Create stats struct to contain all packet statistics
     struct Stats *stats = malloc(sizeof *stats);
@@ -186,7 +188,13 @@ int main(int argc, char **argv){
         int delay;
         sscanf(argv[1], "%d", &delay);
         packets->delay_ms = delay;
-        printf("delay set to %dms\n", delay);
+        printf("custom delay set to %dms\n", delay);
+    }
+    if (argc > 2){
+        int drop_rate;
+        sscanf(argv[2], "%d", &drop_rate);
+        packets->drop_rate = drop_rate;
+        printf("custom drop rate set to %d%%\n", drop_rate);
     }
     stats->latency = packets->delay_ms;
 
@@ -200,7 +208,7 @@ int main(int argc, char **argv){
 
         // Check if any packets are ready to be sent after a specified delay
         if (ready_to_send(packets) == 1){
-            send_packet(sockfd, pop_packet(packets), stats);
+            send_packet(sockfd, packets, stats);
         }
 
         // Print the current statistics every 900ms - TODO: enhance the statistics by 1) modularizing the printing functionality

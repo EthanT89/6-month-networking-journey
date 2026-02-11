@@ -202,6 +202,7 @@ char* get_x_y_symbol(struct User *user, struct Players *players, int x, int y){
 
     for (cur; cur != NULL; cur = cur->next){
         if (cur->x == x && cur->y == y){
+            printf("\x1b[1m""\x1b[37m");
             return PLAYER_SYMBOL2;
         }
     }
@@ -209,14 +210,17 @@ char* get_x_y_symbol(struct User *user, struct Players *players, int x, int y){
     struct Treasure *treasure = user->treasures->head;
     for (treasure; treasure != NULL; treasure = treasure->next){
         if (treasure->x == x && treasure->y == y){
+            printf("\x1b[1m""\x1b[32m");
             return TREASURE_SYMBOL;
         }
     }
 
     if ((x % 2 == 1 && y % 2 == 1)){
         if ( x % 4 == 1 && y % 4 == 1){
+            printf("\x1b[36m");
             return ".";
         }
+        printf("\x1b[35m");
         return ",";
     }
 
@@ -339,21 +343,19 @@ void print_gamestate(struct Players *players, struct User *user){
     for (int y = y_start; y > y_start-10; y--){ // Each row
         for (int x = x_start; x < x_start+10; x++){ // Each column within a row
             if (x==0 || y==0 || x==BOUNDX || y==BOUNDY){
-                printf("\x1b[31m""%s ""\x1b[0m", BOUNDARY_SYMBOL);
+                printf("\x1b[40m");
+                printf("\x1b[37m""%s ""\x1b[0m", BOUNDARY_SYMBOL);
                 continue;
             }
             if (x==user->x && y==user->y){
+                //printf("\x1b[47m");
                 printf("\x1b[34m""%s ""\x1b[0m", PLAYER_SYMBOL);
                 continue;
             }
 
             printf("\x1b[0m");
             unsigned char *symbol = get_x_y_symbol(user, players, x, y);
-            if (strncmp(symbol, "$", 1) == 0){
-                printf("\x1b[1m""\x1b[33m");
-            } else if (strncmp(symbol, "e", 1) == 0){
-                printf("\x1b[1m""\x1b[32m");
-            }
+            //printf("\x1b[47m");
             printf("%s ""\x1b[0m", symbol);
         }
         printf("\n"); // Jump to next row

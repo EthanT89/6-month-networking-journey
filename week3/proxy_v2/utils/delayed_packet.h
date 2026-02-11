@@ -45,6 +45,7 @@ struct Packet {
  */
 struct Packets {
     int delay_ms;
+    int drop_rate;
     int pkt_count;
 
     struct Packet *head;
@@ -64,7 +65,7 @@ struct Packet* pop_packet(struct Packets *packets);
 /*
  * peek_packet() -- return a const pointer to the next packet in queue
  */
-struct Packet* peek_packet(struct Packets *packets);
+const struct Packet* peek_packet(struct Packets *packets);
 
 /*
  * is_empty_packets() -- returns 1 if packets struct is empty, 0 otherwise
