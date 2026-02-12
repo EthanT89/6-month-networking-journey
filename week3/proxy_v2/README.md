@@ -2,96 +2,107 @@
 
 ## Overview
 
-This proxy aims to intercept and forward packets between two UDP servers. By intercepting these packets, we can simulate various network conditions - __latency and packet loss__. 
+This proxy intercepts and forwards packets between UDP endpoints, enabling simulation of real-world network conditions like __latency__ and __packet loss__. 
 
-Integration into UDP servers is incredibly simple - `sendto()` is replaced with `send_proxy()`, and `recvfrom()` is replaced with `rec_proxy()`. Change the name, and it will flow through the proxy.
+Integration into existing UDP applications is remarkably simple—just replace `sendto()` with `send_proxy()` and `recvfrom()` with `rec_proxy()`. That's it. Change the function names, and traffic flows through the proxy.
 
-## Challenges
+## The Challenge
 
-When first starting this, I imagined it to be quite easy - and in theory, it is. Just send all packets through the proxy and the proxy can do what it wants with the packets before sending them out.
+When I started this project, I thought it would be straightforward. In theory, it is—just route all packets through a proxy that can manipulate them before forwarding. Simple enough, right?
 
-Well, with UDP servers, this becomes a lot more challenging. UDP is an unreliable protocol, it sends packets to an address, but does not confirm if it arrived. It never makes a __connection__. 
+Not with UDP.
 
-In the TCP world, all connections get their own socket. The proxy would simply make two sockets for the server/client pair, one for the client and one for the socket. It would map between these two sockets and easily transfer data between them.
+UDP is a connectionless protocol. It sends packets to an address without confirming delivery or establishing a connection. This creates a fundamental routing problem for a proxy.
 
-UDP does not have this functionality, not by default. It leaves that behind in turn for speed and efficiency.
+With TCP, each connection has its own socket. A proxy can create two dedicated sockets per client-server pair and map data between them seamlessly. TCP's connection-oriented nature makes this trivial.
 
-So, how are we going to map each packet from the server ot the client, and vice versa?
+UDP doesn't work that way. It trades reliable connections for speed and efficiency.
 
-## Solution
+This left me with a critical question: how do we correctly route each packet between server and client when UDP provides no inherent connection mapping?
 
-I brainstormed a ton of possiblities for solving the above problem. Most of these required altering some of the server and client code. I kept getting frustrated because all of these solutions violated my initial principle, ___it should be effortless to integrate into a server/client system___.
+## The Solution
 
-But none of these were.
+I explored numerous approaches, but most required modifying the server and client code. This frustrated me because it violated my core principle: ___integration should be effortless___.
 
-Somehow, I had to extract the packet intent. Where did the sender want this packet to go? They sent it to the proxy, but since they sent it to the proxy, the destination address associated with that packet is, well, the proxy! It felt like I was going in circles.
+The fundamental problem was preserving packet intent. When a sender transmits to the proxy, the packet's destination address becomes... the proxy itself. The original destination information is lost. I was going in circles.
 
-The address needed to get packed in the message somewhere. Doing so would require altering the packet contents, which would require changes to the server/client packet logic.
+The destination address had to be embedded in the packet data somehow. But modifying packet contents would require changes to both server and client logic—exactly what I wanted to avoid.
 
-In the end I decided on a solution, another middleman. Not another server, a function this time. _The sword and shield for the proxy_. Its main man.
+Then I found an elegant solution: another intermediary layer. Not another server—a pair of wrapper functions. _The sword and shield of the proxy._ 
 
-`proxy_utils.c` contains this middleman.
+Enter `proxy_utils.c`.
 
-It's simple, by mirroring the `sendto()` and `recvfrom()` functions, we could take all the original intent- data, destination, etc- and create an entirely new packet. This new packet had the destination address prepended to it. We would send that packet to the proxy server and it would take apart this packet and extract the destination address. Then, where it grabbed the destination address from, it replaced with the sender address. This way, the recipient knew where it came from. Finally, the proxy would forward this packet to the destination. 
+By mirroring the signatures of `sendto()` and `recvfrom()`, these wrapper functions preserve all original intent—data, destination, and source—while creating a new, enriched packet format:
 
-The destination would then call `rec_server()`, which extracted the original address and content, painlessly extracting the original packet intent.
+1. **Sending**: `send_proxy()` prepends the destination address to the packet data and forwards everything to the proxy
+2. **Proxy routing**: The proxy extracts the destination address, replaces it with the sender's address (so recipients know the source), and forwards the packet
+3. **Receiving**: `rec_proxy()` unpacks the sender address and original data, seamlessly reconstructing the original packet
 
-And with that, packets could be seamlessly sent from server to client while passing through the proxy. The server and client wouldn't notice a thing. They make the __same exact function call__, with a __slightly different name__, and it works just as before; however, now we can mess with the packets in the proxy however we want. 
+The result? Packets flow from server to client through the proxy completely transparently. Applications make the __same function calls__ with __slightly different names__, and everything works identically—except now we can manipulate packets in the proxy however we want.
 
-_Data, statistics, stress testing, its all a possibility in this new proxy_.
+_Latency simulation, packet statistics, stress testing—it's all possible with this approach._
 
-## Getting it started
+## Getting Started
 
-### Start the proxy
+### Building and Starting the Proxy
 
-The proxy configurations, latency and packet drop rate, can be set in `proxy_config.h`. However, to make things more convenience, I have added command line arguments to be used with the program. This way, you only need to quickly restart the program and change the command values. If these values are not specified in the command, the default values in `proxy_config.h` are used.
+The proxy reads latency and packet drop rate from `proxy_config.h` by default. For convenience, these settings can be overridden via command-line arguments, allowing quick experimentation without recompiling.
 
-`./filename --latency(ms) --droprate(%)`
+___To compile:___
 
-___To compile the proxy server:___
-
-`gcc proxy.c ./utils/proxy_utils.c ../utils/time_custom.c ./utils/delayed_packet.c -o proxy`
+```bash
+gcc proxy.c ./utils/proxy_utils.c ../utils/time_custom.c ./utils/delayed_packet.c -o proxy
+```
 
 ___To run:___
 
-`./proxy`
-or
-`./proxy 100` If you want 100ms latency delay
-or
-`./proxy 100 5` If you want 100ms latency delay __and__ 5% packet drop rate
+```bash
+./proxy                  # Use defaults from proxy_config.h
+./proxy 100              # Set 100ms latency
+./proxy 100 5            # Set 100ms latency and 5% packet drop rate
+```
 
-Unfortunately, there is not a way to specify ___only___ the drop rate, and not the delay. That could be added later, it was not a priority at the moment.
+**Note:** Currently, you cannot specify drop rate without latency. This could be enhanced later—it wasn't a priority for the initial implementation.
 
-### Seeing Statistics
+### Monitoring Statistics
 
-Every 900ms, 9/10 of a second, the current session's statistics are displayed. This includes packets received, packets forwarded, packets dropped, and the current latency in ms.
+Every 900ms, the proxy displays current session statistics:
+- Packets received
+- Packets forwarded
+- Packets dropped
+- Current latency (ms)
 
-These statistics are only stored per-session. There is no memory or storage, so be sure to log these when you're done!
+Statistics are ephemeral—they only exist for the current session. Be sure to record them before stopping the proxy if you need them later.
 
-Feel free to change the `Stats` struct to track any other details.
+The `Stats` struct can easily be extended to track additional metrics as needed.
 
-### Integrating Into Your Program
+### Integration Into Your Application
 
-Assuming you have a UDP server, and use `sendto()` and `recvfrom()`, this will be easy as potatoes.
+If your application uses standard UDP sockets with `sendto()` and `recvfrom()`, integration is trivial:
 
-In fact, you just have to press `ctrl+f`, type in 'sendto', and in the 'replace all' form, type in 'send_proxy'. Then, hit replace all. Do the same with 'recvfrom', but replace with 'rec_proxy'.
+1. Open your source file
+2. Find and replace all instances of `sendto` with `send_proxy`
+3. Find and replace all instances of `recvfrom` with `rec_proxy`
+4. Start the proxy, then start your server and client(s)
 
-Once you've done that, you're good as gold! Just start the proxy, your server and client(s), and watch the magic happen!
+That's it. Done.
 
-###__Note:__
+### Important Limitations
 
-This works wonders locally, and is meant for local testing. __I cannot emphasize enough how poorly this will work if you use it over the internet__. Considering you are using UDP, packets may drop before/during transmission to the proxy, and not even the proxy will realize they were there. The statistics will be wrong, _it will be pointless_.
+This proxy is designed for __local testing only__. While it works beautifully on localhost, __it will not function correctly over the internet__.
 
-That said, if you are testing locally, and are using UDP sockets with `sendto()` and `recvfrom()`, you shouldn't have any problems!
+Why? UDP packets may drop before reaching the proxy, and the proxy has no way to detect packets that never arrived. Statistics become meaningless, and the simulation breaks down.
+
+For local UDP testing with `sendto()` and `recvfrom()`, however, you shouldn't encounter any issues.
 
 ## Final Thoughts
 
-The goal of this was to stress test the game found in `week3`, a simple treasure hunting game over the network. I had only used it locally, and I wanted to see what it would be like with real world conditions like bad internet or congestion.
+I built this proxy to stress-test the treasure-hunting game in `week3`. I'd only run it locally under ideal conditions, and I wanted to see how it behaved under real-world constraints—latency, packet loss, network congestion.
 
-___This is the first network tool I have created___, and more are to come. I plan to use this in any future UDP projects I make.
+___This is the first network tool I've created___, and more are coming. I plan to use this in all my future UDP projects.
 
-With that, if it does not suit your needs or expectations, that's okay! I hope it can be useful to you and myself in the future, but I am just starting out my engineering journey. I lack the foresight needed for all applications.
+If it doesn't perfectly suit your needs or expectations, that's okay. I'm still early in my engineering journey and lack the experience to anticipate every use case. My hope is that it proves useful—for both you and me—as a practical testing tool.
 
-Anywho, thanks for stopping by.
+Thanks for stopping by.
 
-- Ethan
+— Ethan
