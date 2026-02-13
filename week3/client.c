@@ -31,14 +31,18 @@
  * y - current y coordinate of the player
  * score - current accumulative score of the player
  * name - the current player's username
+ * stale - 0 if printed latest state, 1 if not
  * *treasures - a linked list of all the treasures currently in-game
  */
 struct User {
+    int id;
     int x;
     int y;
     int score;
     unsigned char name[MAXUSERNAME];
+    int stale;
 
+    struct Players *players;
     struct Treasures *treasures;
 };
 
@@ -408,6 +412,45 @@ void handle_command(int sockfd, struct addrinfo *p, unsigned char command[MAXCOM
     printf("Unknown command! Use '/help' to see available commands.\n");
 }
 
+int validate_movement(char input, struct User *user){
+    int y = user->y;
+    int x = user->x;
+
+    if (input == 'w') y++; 
+    if (input == 'a') x--;
+    if (input == 's') y--;
+    if (input == 'd') x++;
+
+    // check for player collisions
+    struct Player *cur = user->players->head;
+    for (cur; cur != NULL; cur = cur->next){
+        if (cur->x == x && cur->y == y){
+            return 0;
+        }
+    }
+
+    // check for X bounds
+    if (x <= 0 || x >= BOUNDX){
+        return 0;
+    }
+    if (y <= 0 || y >= BOUNDY){
+        return 0;
+    }
+
+    // check for treasure
+    struct Treasure *treasure = user->treasures->head;
+    for (treasure; treasure != NULL; treasure = treasure->next){
+        if (treasure->x == x && treasure->y == y){
+            remove_treasure_by_id(user->treasures, treasure->id);
+        }
+    }
+
+    user->x = x;
+    user->y = y;
+
+    return 1;
+}
+
 /*
  * handle_keypress() -- handles keypress logic - commands, quitting, and 'wasd' movements
  */
@@ -436,14 +479,13 @@ int handle_keypress(int sockfd, struct addrinfo *p, char input, struct termios *
         set_nonblocking_mode();
     }
 
+    if (validate_movement(input, user) == 0){
+        return 1;
+    }
+
     unsigned char update[MAXBUFSIZE];
-
-    if (input == 'w') user->y++; 
-    if (input == 'a') user->x--;
-    if (input == 's') user->y--;
-    if (input == 'd') user->x++;
-
-
+    
+    user->stale = 1;
     construct_update_packet(update, user->x, user->y);
     send_packet(sockfd, p, update, 8);
     *last_tick = get_time_ms();
@@ -481,20 +523,22 @@ void handle_position_update(struct Players *players, unsigned char buf[MAXBUFSIZ
         int score = unpacki16(buf+offset); offset += 2;
 
         struct Player *player = get_player_by_id(players, id);
-        if (player == NULL){
-            user->x = x;
-            user->y = y;
+        if (id == user->id){
+            // user->x = x;
+            // user->y = y;
             user->score = score;
+            continue;
+        }
 
+        if (player == NULL){
             continue;
         }
 
         player->x = x;
         player->y = y;
         player->score = score;
-        printf("..\n");
     }
-    print_gamestate(players, user);
+    // print_gamestate(players, user);
 }
 
 /*
@@ -578,6 +622,26 @@ void handle_error(int sockfd, struct User *user, unsigned char buf[MAXBUFSIZE], 
 
 }
 
+void handle_id_update(struct User *user, unsigned char buf[MAXBUFSIZE]){
+    int id = unpacki16(buf+STARTING_OFFSET);
+    user->id = id;
+}
+
+void handle_position_correction(struct User *user, unsigned char buf[MAXBUFSIZE]){
+    int offset = STARTING_OFFSET;
+    int id = unpacki16(buf+offset); offset += 2;
+    int x = unpacki16(buf+offset); offset += 2;
+    int y = unpacki16(buf+offset); offset += 2;
+
+    if (user->id != id){
+        return;
+    }
+
+    user->x = x;
+    user->y = y;
+    user->stale = 1;
+}
+
 /*
  * handle_data() -- given data from the server, unpack and determine legitimacy, then determine data type and call corresponding functions
  */
@@ -623,9 +687,21 @@ void handle_data(int sockfd, struct addrinfo *p, struct Players *players, struct
 
     if (msg_id == ERROR_ID){
         handle_error(sockfd, user, buf, original_settings, p);
+        return;
     }
 
-    printf("? %d\n", msg_id);
+    if (msg_id == YOUR_ID_IS){
+        handle_id_update(user, buf);
+        return;
+    }
+
+    if (msg_id == POSITION_CORRECTION_ID){
+        handle_position_correction(user, buf);
+        return;
+    }
+
+
+    printf("Unknown packet id: \"%d\"\n", msg_id);
 }
 
 /*
@@ -652,10 +728,13 @@ int main(void)
     treasures->head = NULL;
 
     struct User *user = malloc(sizeof *user);
-    user->x = 0;
-    user->y = 0;
+    user->x = BOUNDX/2;
+    user->y = BOUNDY/2;
     user->score = 0;
+    user->stale = 1;
+    user->id = -1;
     memset(user->name, 0, MAXUSERNAME);
+    user->players = players;
     user->treasures = treasures;
 
 
@@ -690,7 +769,7 @@ int main(void)
     while (1){
         char input;
         int n = read(STDIN_FILENO, &input, 1);
-        if (n > 0 && interval_elapsed_cur(last_tick, botmode==1 ? 1 : 100) == 1 && handle_keypress(sockfd, p, input, &original_settings, user, &last_tick) == 0) {
+        if (n > 0 && interval_elapsed_cur(last_tick, botmode==1 ? 1 : 1) == 1 && handle_keypress(sockfd, p, input, &original_settings, user, &last_tick) == 0) {
             break;
         }
 
@@ -727,8 +806,15 @@ int main(void)
             next_move = rand() % 450 + 50;
         }
 
+        if (user->stale == 1 && interval_elapsed_cur(last_tick, 0) == 1){
+            print_gamestate(players, user);
+            last_tick = get_time_ms();
+            user->stale = 0;
+        }
+
         if (poll(pfds, 1, 0) > 0){
             handle_data(sockfd, p, players, user, &original_settings);
+            user->stale = 1;
         }
     }
 

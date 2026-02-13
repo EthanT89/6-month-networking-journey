@@ -29,6 +29,8 @@
 #define DELTREASURE_ID 451 // delete treasure update
 #define ERROR_ID 666 // some kind of error has occurred
 #define REJECT_CONNECTION_ID 667 // reject an attempted connection to the server (often from being full)
+#define YOUR_ID_IS 1001 // User ID update
+#define POSITION_CORRECTION_ID 1002 // positional client correction
 
 // Viewport Symbols
 #define BOUNDARY_SYMBOL "X" // Represents a boundary on the map

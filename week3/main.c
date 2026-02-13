@@ -29,9 +29,9 @@ struct State {
 };
 
 /*
- * broadcast_treasure() -- broadcast the data of a treasure to all players to update the game state. x, y, and points values are sent.
+ * broadcast_treasure_all() -- broadcast the data of a treasure to all players to update the game state. x, y, and points values are sent.
  */
-void broadcast_treasure(struct State *state, struct Treasure *treasure){
+void broadcast_treasure_all(struct State *state, struct Treasure *treasure){
     unsigned char update[MAXBUFSIZE];
     int offset = 0;
 
@@ -46,6 +46,23 @@ void broadcast_treasure(struct State *state, struct Treasure *treasure){
     for (cur; cur != NULL; cur = cur->next){
         send_proxy(state->sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
     }
+}
+
+/*
+ * broadcast_treasure_single() -- broadcast the data of a treasure to one player to update the game state. x, y, and points values are sent.
+ */
+void broadcast_treasure_single(struct Player *player, struct Treasure *treasure, struct State *state){
+    unsigned char update[MAXBUFSIZE];
+    int offset = 0;
+
+    packi16(update+offset, APPID); offset += 2;
+    packi16(update+offset, NEWTREASURE_ID); offset += 2;
+    packi16(update+offset, treasure->id); offset += 2;
+    packi16(update+offset, treasure->x); offset += 2;
+    packi16(update+offset, treasure->y); offset += 2;
+    packi16(update+offset, treasure->value); offset += 2;
+
+    send_proxy(state->sockfd, update, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
 }
 
 /*
@@ -80,7 +97,7 @@ void gen_new_treasure(struct State *state){
 
 
     add_treasure(state->treasures, treasure);
-    broadcast_treasure(state, treasure);
+    broadcast_treasure_all(state, treasure);
 }
 
 /*
@@ -209,6 +226,30 @@ void handle_command(struct State *state, struct Player *player, unsigned char co
 
 }
 
+void send_position_correction(int sockfd, struct Player *player){
+    unsigned char packet[MAXBUFSIZE];
+    int offset = 0;
+
+    packi16(packet+offset, APPID); offset += 2;
+    packi16(packet+offset, POSITION_CORRECTION_ID); offset += 2;
+    packi16(packet+offset, player->id); offset += 2;
+    packi16(packet+offset, player->x); offset += 2;
+    packi16(packet+offset, player->y); offset += 2;
+
+    send_proxy(sockfd, packet, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
+}
+
+void send_user_id(int sockfd, struct Player *player){
+    unsigned char packet[MAXBUFSIZE];
+    int offset = 0;
+
+    packi16(packet+offset, APPID); offset += 2;
+    packi16(packet+offset, YOUR_ID_IS); offset += 2;
+    packi16(packet+offset, player->id); offset += 2;
+
+    send_proxy(sockfd, packet, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
+}
+
 /*
  * handle_new_connection() -- create a new player and assign the new connection to this player. Update their username, id, coords, etc.
  *
@@ -245,14 +286,16 @@ void handle_new_connection(int sockfd, struct sockaddr_in addr, socklen_t addr_l
 
     strncpy(new_player->username, data, len);
 
+    send_position_correction(sockfd, new_player);
     send_user_update_all(sockfd, state->players, new_player);
     send_all_users_data(sockfd, state->players, new_player);
+    send_user_id(sockfd, new_player);
 
     add_player(state->players, new_player);
 
     struct Treasure *cur = state->treasures->head;
     for (cur; cur != NULL; cur = cur->next){
-        broadcast_treasure(state, cur);
+        broadcast_treasure_all(state, cur);
     }
 }
 
@@ -286,49 +329,21 @@ int validate_movement(int sockfd, struct State *state, struct Player *player, in
         valid = 0;
     }
     
-    if (valid == 0){
-        unsigned char update[MAXBUFSIZE];
-        memset(update, 0, MAXBUFSIZE);
-
-        // Pack appid and updateid to secure message
-        packi16(update, APPID);
-        packi16(update+2, UPDATE_ID);
-
-        int offset = 4;
-        // TODO MAYBE SEND SCORE AS WELL
-        packi16(update+offset, player->id);
-        offset += 2;
-        packi16(update+offset, player->x);
-        offset += 2;
-        packi16(update+offset, player->y);
-        offset += 2;
-        packi16(update+offset, player->score);
-        offset += 2;
-
-        send_proxy(sockfd, update, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
-
-        return 0;
-    }
-    return 1;
+    return valid;
 }
 
 /*
  * check_for_treasure() -- check if a player's coordinates overlap with any treasures, if so, broadcast the removal and update the user's points
  */
-void check_for_treasure(struct State *state, struct Player *player){
+struct Treasure* check_for_treasure(struct State *state, struct Player *player){
     struct Treasure *cur = state->treasures->head;
 
     for (cur; cur != NULL; cur = cur->next){
-        if (player->x == (cur->x) && (player->y == cur->y)){
-            printf("%s found a treasure worth %d points!\n", player->username, cur->value);
-            player->score += cur->value;
-
-            broadcast_treasure_removal(state, cur->id);
-            remove_treasure_by_id(state->treasures, cur->id);
-            gen_new_treasure(state);
-            return;
+        if (player->x == cur->x && player->y == cur->y){
+            return cur;
         }
     }
+    return NULL;
 }
 
 /*
@@ -343,16 +358,28 @@ void handle_update(struct Player *player, unsigned char data[MAXBUFSIZE], int so
     int x = unpacki16(data);
     int y = unpacki16(data + 2);
 
+    struct Treasure *treasure = check_for_treasure(state, player);
+    int is_valid = validate_movement(sockfd, state, player, x, y);
+
     // Check for valid x,y change (player can only move one unit at a time.)
-    if (validate_movement(sockfd, state, player, x, y) == 0){
+    if (is_valid == 0){
+        if (treasure != NULL){
+            printf("whoops...\n");
+            broadcast_treasure_single(player, treasure, state);
+        }
+        send_position_correction(sockfd, player);
         return;
     }
 
     player->x = x;
     player->y = y;
 
+    printf("%s found a treasure worth %d points!\n", player->username, treasure->value);
+    player->score += treasure->value;
 
-    check_for_treasure(state, player);
+    broadcast_treasure_removal(state, treasure->id);
+    remove_treasure_by_id(state->treasures, treasure->id);
+    gen_new_treasure(state);
 }
 
 /*
