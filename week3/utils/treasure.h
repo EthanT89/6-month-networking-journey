@@ -58,7 +58,7 @@ void remove_treasure_by_coord(struct Treasures *treasures, int x, int y);
 struct Treasure* get_treasure_by_id(struct Treasures *treasures, int id);
 
 /*
- * get_treasure_by_id() -- given coordinates, locate and return the corresponding treasure struct, returns NULL if not found
+ * get_treasure_by_coord() -- given coordinates, locate and return the corresponding treasure struct, returns NULL if not found
  */
 struct Treasure* get_treasure_by_coord(struct Treasures *treasures, int x, int y);
 

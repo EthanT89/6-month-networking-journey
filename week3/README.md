@@ -82,14 +82,14 @@ gcc proxy.c ./utils/proxy_utils.c ../utils/time_custom.c ./utils/delayed_packet.
 **Terminal 2 - Start the game server:**
 ```bash
 cd week3
-gcc main.c ./utils/time_custom.c ./utils/player.c ./utils/buffer_manipulation.c ./utils/treasure.c -lm -o main
+gcc main.c ./utils/time_custom.c ./utils/player.c ./utils/buffer_manipulation.c ./proxy_v2/utils/proxy_utils.c ./utils/treasure.c -lm -o main
 ./main
 ```
 
 **Terminal 3+ - Join as clients:**
 ```bash
 cd week3
-gcc client.c ./utils/buffer_manipulation.c ./utils/player.c ./utils/time_custom.c ./utils/treasure.c -lm -o client
+gcc client.c ./utils/buffer_manipulation.c ./utils/player.c ./utils/time_custom.c ./proxy_v2/utils/proxy_utils.c ./utils/treasure.c -lm -o client
 ./client
 ```
 
