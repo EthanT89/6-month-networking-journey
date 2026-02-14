@@ -347,7 +347,6 @@ void print_gamestate(struct Players *players, struct User *user){
     for (int y = y_start; y > y_start-10; y--){ // Each row
         for (int x = x_start; x < x_start+10; x++){ // Each column within a row
             if (x==0 || y==0 || x==BOUNDX || y==BOUNDY){
-                printf("\x1b[40m");
                 printf("\x1b[37m""%s ""\x1b[0m", BOUNDARY_SYMBOL);
                 continue;
             }
@@ -538,7 +537,6 @@ void handle_position_update(struct Players *players, unsigned char buf[MAXBUFSIZ
         player->y = y;
         player->score = score;
     }
-    // print_gamestate(players, user);
 }
 
 /*

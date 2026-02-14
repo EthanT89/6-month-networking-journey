@@ -364,7 +364,6 @@ void handle_update(struct Player *player, unsigned char data[MAXBUFSIZE], int so
     // Check for valid x,y change (player can only move one unit at a time.)
     if (is_valid == 0){
         if (treasure != NULL){
-            printf("whoops...\n");
             broadcast_treasure_single(player, treasure, state);
         }
         send_position_correction(sockfd, player);
@@ -373,13 +372,15 @@ void handle_update(struct Player *player, unsigned char data[MAXBUFSIZE], int so
 
     player->x = x;
     player->y = y;
+    if (treasure != NULL){
+        printf("%s found a treasure worth %d points!\n", player->username, treasure->value);
+        player->score += treasure->value;
 
-    printf("%s found a treasure worth %d points!\n", player->username, treasure->value);
-    player->score += treasure->value;
-
-    broadcast_treasure_removal(state, treasure->id);
-    remove_treasure_by_id(state->treasures, treasure->id);
-    gen_new_treasure(state);
+        broadcast_treasure_removal(state, treasure->id);
+        remove_treasure_by_id(state->treasures, treasure->id);
+        gen_new_treasure(state);
+    }
+    
 }
 
 /*
@@ -409,7 +410,7 @@ void handle_disconnection(int sockfd, struct State *state, int id){
  * rejected due to the server being full
  */
 void handle_reject_connection(int sockfd, struct sockaddr_in * addr, socklen_t addr_len){
-    unsigned char buf[MAXCOMMANDSIZE];
+    unsigned char buf[MAXBUFSIZE];
     int offset = 0;
 
     packi16(buf+offset, APPID); offset += 2;
