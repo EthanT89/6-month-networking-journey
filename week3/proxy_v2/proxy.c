@@ -162,6 +162,7 @@ void send_packet(int sockfd, struct Packets *packets, struct Stats *stats){
 int main(int argc, char **argv){
     int sockfd = get_socket();
     int last_update = 0;
+    int variance = 10;
 
     // Setup poll fd struct for data handling that does not block the program
     struct pollfd *pfds = malloc(sizeof *pfds);
@@ -183,18 +184,23 @@ int main(int argc, char **argv){
     stats->packets_forwarded = 0;
     stats->packets_received = 0;
 
+    int drop_rate;
+    int delay;
+
     // If user entered a command line argument, interpret it as the new delay time in ms
     if (argc > 1){
-        int delay;
         sscanf(argv[1], "%d", &delay);
         packets->delay_ms = delay;
         printf("custom delay set to %dms\n", delay);
+    } else {
+        delay = DELAY_MS;
     }
     if (argc > 2){
-        int drop_rate;
         sscanf(argv[2], "%d", &drop_rate);
         packets->drop_rate = drop_rate;
         printf("custom drop rate set to %d%%\n", drop_rate);
+    } else {
+        drop_rate = DROP_RATE;
     }
     stats->latency = packets->delay_ms;
 
@@ -202,7 +208,7 @@ int main(int argc, char **argv){
     while (1){
         // Check for incoming packets
         if (poll(pfds, 1, 0) >= 1){
-            printf("Received data. Routing...\n");
+            // printf("Received data. Routing...\n");
             handle_data(sockfd, packets, stats);
         }
 
@@ -220,6 +226,22 @@ int main(int argc, char **argv){
             printf("Packets Dropped: %d\n", stats->packets_dropped);
             printf("Latency: %dms\n\n", stats->latency);
             last_update = get_time_ms();
+
+            if (packets->delay_ms > (delay + 2*variance)){
+                packets->delay_ms -= (rand() % variance);
+            } else if (packets->delay_ms < (delay - 2*variance)) {
+                packets->delay_ms += (rand() % variance);
+            } else {
+                packets->delay_ms = packets->delay_ms + (pow(-1, (rand() % 3)) * (rand() % variance));
+            }
+
+            if (packets->delay_ms < 0){
+                packets->delay_ms += variance;
+            }
+
+            stats->latency = packets->delay_ms;
+
+
         }
 
     }
