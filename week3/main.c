@@ -281,6 +281,7 @@ void handle_new_connection(int sockfd, struct sockaddr_in addr, socklen_t addr_l
     new_player->score = 0;
     new_player->x = (rand() % (BOUNDX-2)) + 1;
     new_player->y = (rand() % (BOUNDY-2)) + 1;
+    new_player->last_received_packet = get_time_ms();
 
     // extract username
     size_t len = strlen(data);
@@ -447,6 +448,18 @@ void handle_latency_check(int sockfd, struct State *state, struct Player *player
     send_proxy(sockfd, packet, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
 }
 
+void check_for_inactivity(int sockfd, struct State *state, struct Players *players){
+
+    struct Player *cur = players->head;
+
+    for (cur; cur != NULL; cur = cur->next){
+        if (interval_elapsed_cur(cur->last_received_packet, 5000) == 1){
+            printf("%s timed out.\n", cur->username);
+            handle_disconnection(sockfd, state, cur->id);
+        }
+    }
+}
+
 /*
  * handle_data() -- Given ANY data to read from the server socket, unpack, verify, and handle next actions for the data.
  */
@@ -594,6 +607,7 @@ int main(void)
             // Assume all packets make it. Packets are time sensitive so it is not worth it to resend. (locally, this is extremely fast though)
             broadcast_updates(sockfd, state, last_update);
             last_tick = get_time_ms();
+            check_for_inactivity(sockfd, state, players);
         }
 
         // Received some kind of data
