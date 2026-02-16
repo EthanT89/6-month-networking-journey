@@ -33,6 +33,7 @@ struct State {
     int player_id_ct;
     int treasure_id_ct;
 
+    struct Network *network;
     struct Players *players;
     struct Treasures *treasures;
 };
@@ -436,6 +437,16 @@ void handle_reject_connection(int sockfd, struct sockaddr_in * addr, socklen_t a
     send_proxy(sockfd, buf, offset, 0, (struct sockaddr*)addr, addr_len);
 }
 
+void handle_latency_check(int sockfd, struct State *state, struct Player *player){
+    unsigned char packet[MAXBUFSIZE];
+    int offset = 0;
+
+    packi16(packet+offset, APPID); offset += 2;
+    packi16(packet+offset, LATENCY_CHECK_ID); offset += 2;
+
+    send_proxy(sockfd, packet, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
+}
+
 /*
  * handle_data() -- Given ANY data to read from the server socket, unpack, verify, and handle next actions for the data.
  */
@@ -475,6 +486,8 @@ void handle_data(int sockfd, struct State *state){
         return;
     }
 
+    sender->last_received_packet = get_time_ms();
+
     if (msg_type == UPDATE_ID){
         handle_update(sender, data, sockfd, state);
         return;
@@ -489,6 +502,10 @@ void handle_data(int sockfd, struct State *state){
         printf("%s disconnected!\n", sender->username);
         handle_disconnection(sockfd, state, sender->id);
         return;
+    }
+
+    if (msg_type == LATENCY_CHECK_ID){
+        handle_latency_check(sockfd, state, sender);
     }
 }
 
@@ -549,12 +566,17 @@ int main(void)
     players->total_players = 0;
     players->head = NULL;
 
+    struct Network *network = malloc(sizeof *network);
+    network->last_tick_sent = 0;
+    network->latency_ms = 0;
+
     struct State *state = malloc(sizeof *state);
     state->player_id_ct = 1;
     state->treasure_id_ct = 1;
     state->treasures = treasures;
     state->players = players;
     state->sockfd = sockfd;
+    state->network = network;
     
     create_initial_treasures(state);
 

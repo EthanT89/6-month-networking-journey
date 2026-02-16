@@ -35,6 +35,8 @@ struct Player {
     int x;
     int y;
 
+    int last_received_packet;
+
     struct Player* next;
 };
 

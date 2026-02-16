@@ -44,6 +44,7 @@ struct User {
     unsigned char name[MAXUSERNAME];
     int stale;
 
+    struct Network *network;
     struct Players *players;
     struct Treasures *treasures;
 };
@@ -297,17 +298,17 @@ void print_gamestate(struct Players *players, struct User *user){
         printf("\n");
     }
     
-    printf("________________________________________\n");
-    printf("|  Player     |   Coords    |  Score   |\n");
-    printf("|_____________|_____________|__________|\n");
-    printf("|  %-6.6s     |  (%+-2.2d,%+-2.2d)  |  %-2.2d pts  |\n", user->name, user->x, user->y, user->score);
-    printf("|_____________|_____________|__________|\n");
+    printf("__________________________________________________\n");
+    printf("|  Player     |   Coords    |  Score   |   Ping   |\n");
+    printf("|_____________|_____________|__________|__________|\n");
+    printf("|  %-6.6s     |  (%+-2.2d,%+-2.2d)  |  %-2.2d pts  |  %-3.3dms   |\n", user->name, user->x, user->y, user->score, user->network->latency_ms);
+    printf("|_____________|_____________|__________|__________|\n");
 
     if (cur != NULL){
         for (cur; cur != NULL; cur = cur->next){
-            printf("|  %-6.6s     |  (%+-2.2d,%+-2.2d)  |  %-2.2d pts  |\n", cur->username, cur->x, cur->y, cur->score);
+            printf("|  %-6.6s     |  (%+-2.2d,%+-2.2d)  |  %-2.2d pts  |   %-3.3dms   |\n", cur->username, cur->x, cur->y, cur->score, user->network->latency_ms);
         }
-        printf("|_____________|_____________|__________|\n\n");
+        printf("|_____________|_____________|__________|__________|\n\n");
     }
 
     int y_start = 9;
@@ -645,6 +646,20 @@ void handle_position_correction(struct User *user, unsigned char buf[MAXBUFSIZE]
     user->stale = 1;
 }
 
+void handle_latency_packet(int sockfd, struct addrinfo *p, struct User *user){
+    int RTT = get_diff_ms(get_time_ms(), user->network->last_tick_sent);
+    user->network->latency_ms = RTT/2;
+    user->network->last_tick_sent = get_time_ms();
+
+    unsigned char packet[MAXBUFSIZE];
+    int offset = 0;
+
+    packi16(packet+offset, APPID); offset += 2;
+    packi16(packet+offset, LATENCY_CHECK_ID); offset += 2;
+
+    send_packet(sockfd, p, packet, offset);
+}
+
 /*
  * handle_data() -- given data from the server, unpack and determine legitimacy, then determine data type and call corresponding functions
  */
@@ -703,6 +718,10 @@ void handle_data(int sockfd, struct addrinfo *p, struct Players *players, struct
         return;
     }
 
+    if (msg_id == LATENCY_CHECK_ID){
+        handle_latency_packet(sockfd, p, user);
+    }
+
 
     printf("Unknown packet id: \"%d\"\n", msg_id);
 }
@@ -730,12 +749,17 @@ int main(void)
     treasures->count = 0;
     treasures->head = NULL;
 
+    struct Network *network = malloc(sizeof *network);
+    network->last_tick_sent = 0;
+    network->latency_ms = 0;
+
     struct User *user = malloc(sizeof *user);
     user->x = BOUNDX/2;
     user->y = BOUNDY/2;
     user->score = 0;
     user->stale = 1;
     user->id = -1;
+    user->network = network;
     memset(user->name, 0, MAXUSERNAME);
     user->players = players; // TODO: completely refactor to use user->players, rather than just players, currently split
     user->treasures = treasures;
@@ -767,7 +791,7 @@ int main(void)
         user->name[len-1] = '\0';
         len--;
     }
-
+    handle_latency_packet(sockfd, p, user);
     
     while (1){
         char input;
