@@ -278,8 +278,8 @@ void handle_new_connection(int sockfd, struct sockaddr_in addr, socklen_t addr_l
     new_player->addrlen = addr_len;
     new_player->id = (state->player_id_ct)++;
     new_player->score = 0;
-    new_player->x = (rand() % BOUNDX-2) + 1;
-    new_player->y = (rand() % BOUNDY-2) + 1;
+    new_player->x = (rand() % (BOUNDX-2)) + 1;
+    new_player->y = (rand() % (BOUNDY-2)) + 1;
 
     // extract username
     size_t len = strlen(data);
@@ -298,13 +298,12 @@ void handle_new_connection(int sockfd, struct sockaddr_in addr, socklen_t addr_l
         }
     }
 
-
     strncpy(new_player->username, data, len);
 
-    send_position_correction(sockfd, new_player); // send current coordinates TODO: why isn't user receiving this on startup???
     send_user_update_all(sockfd, state->players, new_player); // send new player info to ALL players
     send_all_users_data(sockfd, state->players, new_player); // send all current player data to new player
     send_user_id(sockfd, new_player); // send user id
+    send_position_correction(sockfd, new_player); // send current coordinates
 
     add_player(state->players, new_player);
 
@@ -441,7 +440,6 @@ void handle_reject_connection(int sockfd, struct sockaddr_in * addr, socklen_t a
  * handle_data() -- Given ANY data to read from the server socket, unpack, verify, and handle next actions for the data.
  */
 void handle_data(int sockfd, struct State *state){
-
     struct sockaddr_in *their_addr = malloc(sizeof *their_addr);
     socklen_t their_len = sizeof *their_addr;
     unsigned char data[MAXBUFSIZE];
