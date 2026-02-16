@@ -19,6 +19,15 @@
 #include <poll.h>
 #include <netinet/in.h>
 
+/*
+ * State -- game state struct containing the latest game data
+ *
+ * sockfd -- server socket file descriptor
+ * player_id_ct -- incrementing player id count
+ * treasure_id_ct -- incrementing treasure id count
+ * *players -- a linked list of all currently connected players
+ * *treasures -- a linked list of all active treasures
+ */
 struct State {
     int sockfd;
     int player_id_ct;
@@ -226,6 +235,9 @@ void handle_command(struct State *state, struct Player *player, unsigned char co
 
 }
 
+/*
+ * send_position_correction() -- send a positional correction packet to the designated player
+ */
 void send_position_correction(int sockfd, struct Player *player){
     unsigned char packet[MAXBUFSIZE];
     int offset = 0;
@@ -239,6 +251,9 @@ void send_position_correction(int sockfd, struct Player *player){
     send_proxy(sockfd, packet, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
 }
 
+/*
+ * send_user_id() -- send a player their user id
+ */
 void send_user_id(int sockfd, struct Player *player){
     unsigned char packet[MAXBUFSIZE];
     int offset = 0;
@@ -286,10 +301,10 @@ void handle_new_connection(int sockfd, struct sockaddr_in addr, socklen_t addr_l
 
     strncpy(new_player->username, data, len);
 
-    send_position_correction(sockfd, new_player);
-    send_user_update_all(sockfd, state->players, new_player);
-    send_all_users_data(sockfd, state->players, new_player);
-    send_user_id(sockfd, new_player);
+    send_position_correction(sockfd, new_player); // send current coordinates TODO: why isn't user receiving this on startup???
+    send_user_update_all(sockfd, state->players, new_player); // send new player info to ALL players
+    send_all_users_data(sockfd, state->players, new_player); // send all current player data to new player
+    send_user_id(sockfd, new_player); // send user id
 
     add_player(state->players, new_player);
 
@@ -333,7 +348,7 @@ int validate_movement(int sockfd, struct State *state, struct Player *player, in
 }
 
 /*
- * check_for_treasure() -- check if a player's coordinates overlap with any treasures, if so, broadcast the removal and update the user's points
+ * check_for_treasure() -- check if a player's coordinates overlap with any treasures, if so, return 1, otherwise 0
  */
 struct Treasure* check_for_treasure(struct State *state, struct Player *player){
     struct Treasure *cur = state->treasures->head;
@@ -358,10 +373,9 @@ void handle_update(struct Player *player, unsigned char data[MAXBUFSIZE], int so
     int x = unpacki16(data);
     int y = unpacki16(data + 2);
 
-    struct Treasure *treasure = check_for_treasure(state, player);
-    int is_valid = validate_movement(sockfd, state, player, x, y);
+    struct Treasure *treasure = check_for_treasure(state, player); // check for treasure collection
+    int is_valid = validate_movement(sockfd, state, player, x, y); // validate movement
 
-    // Check for valid x,y change (player can only move one unit at a time.)
     if (is_valid == 0){
         if (treasure != NULL){
             broadcast_treasure_single(player, treasure, state);
@@ -370,8 +384,11 @@ void handle_update(struct Player *player, unsigned char data[MAXBUFSIZE], int so
         return;
     }
 
+    // update coordinates
     player->x = x;
     player->y = y;
+
+    // broadcast treasure collection if it occurred
     if (treasure != NULL){
         printf("%s found a treasure worth %d points!\n", player->username, treasure->value);
         player->score += treasure->value;

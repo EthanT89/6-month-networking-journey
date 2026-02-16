@@ -27,12 +27,14 @@
 /*
  * User -- local struct for managing user-specific game state - coordinates, score, username, and a local copy of the current treasures
  *
+ * id - current id of the player
  * x - current x coordinate of the player
  * y - current y coordinate of the player
  * score - current accumulative score of the player
  * name - the current player's username
  * stale - 0 if printed latest state, 1 if not
  * *treasures - a linked list of all the treasures currently in-game
+ * *players -- a linked list of all of the players currently in-game
  */
 struct User {
     int id;
@@ -188,14 +190,6 @@ void print_cmd_help(){
     printf("/reset: Reset your coordinates to (0,0)\n");
     printf("\n");
 }
-
-/*
- * get_x_y_symbol() -- given x,y coordinates, determine if the symbol should represent a player or an empty space.
- *
- * Boundary and Treasure symbols have already been considered up to this point, so only Players and Empty Spaces are left.
- * Currently, the actual print function overrides the empty_symbol for alternating symbols.
- * TODO: clean up logic and code for EMPTY_SYMBOL's
- */
 
  /*
   * get_x_y_symbol() -- given a coordinate, cross check against current data - treasures, players, and empty spaces, then return
@@ -411,6 +405,9 @@ void handle_command(int sockfd, struct addrinfo *p, unsigned char command[MAXCOM
     printf("Unknown command! Use '/help' to see available commands.\n");
 }
 
+/*
+ * validate_movement() -- validate user input outcome against current player positions and X+Y bounds. Returns 1 if valid, 0 otherwise
+ */
 int validate_movement(char input, struct User *user){
     int y = user->y;
     int x = user->x;
@@ -454,11 +451,13 @@ int validate_movement(char input, struct User *user){
  * handle_keypress() -- handles keypress logic - commands, quitting, and 'wasd' movements
  */
 int handle_keypress(int sockfd, struct addrinfo *p, char input, struct termios *original_settings, struct User *user, int *last_tick){
+    // handle quit
     if (input == 'q'){
         printf("Thanks for stopping by!\n");
         return 0;
     }
 
+    // handle command
     if (input == 'c'){
         unsigned char commmand[MAXCOMMANDSIZE];
 
@@ -484,7 +483,7 @@ int handle_keypress(int sockfd, struct addrinfo *p, char input, struct termios *
 
     unsigned char update[MAXBUFSIZE];
     
-    user->stale = 1;
+    user->stale = 1; // need to print new gamestate
     construct_update_packet(update, user->x, user->y);
     send_packet(sockfd, p, update, 8);
     *last_tick = get_time_ms();
@@ -620,11 +619,17 @@ void handle_error(int sockfd, struct User *user, unsigned char buf[MAXBUFSIZE], 
 
 }
 
+/*
+ * handle_id_update() -- handle packet from server containing self id
+ */
 void handle_id_update(struct User *user, unsigned char buf[MAXBUFSIZE]){
     int id = unpacki16(buf+STARTING_OFFSET);
     user->id = id;
 }
 
+/*
+ * handle_position_correction() -- handle server positional corrections, overrides current coordinates
+ */
 void handle_position_correction(struct User *user, unsigned char buf[MAXBUFSIZE]){
     int offset = STARTING_OFFSET;
     int id = unpacki16(buf+offset); offset += 2;
@@ -732,7 +737,7 @@ int main(void)
     user->stale = 1;
     user->id = -1;
     memset(user->name, 0, MAXUSERNAME);
-    user->players = players;
+    user->players = players; // TODO: completely refactor to use user->players, rather than just players, currently split
     user->treasures = treasures;
 
 
@@ -767,7 +772,7 @@ int main(void)
     while (1){
         char input;
         int n = read(STDIN_FILENO, &input, 1);
-        if (n > 0 && interval_elapsed_cur(last_tick, botmode==1 ? 1 : 1) == 1 && handle_keypress(sockfd, p, input, &original_settings, user, &last_tick) == 0) {
+        if (n > 0 && interval_elapsed_cur(last_tick, botmode==1 ? 1 : 1) == 1 && handle_keypress(sockfd, p, input, &original_settings, user, &last_tick) == 0) { // TODO: find a better way to limit moves/sec
             break;
         }
 
@@ -818,3 +823,5 @@ int main(void)
 
     handle_shutdown(sockfd, &original_settings, p);
 }
+
+// TODO: add ACK for treasures, connections, player updates, etc.
