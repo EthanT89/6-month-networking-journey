@@ -9,7 +9,7 @@
 #include <math.h>
 
 /*
- * get_time_ms() -- Returns the time in ms. Limited to 1 second timeframe (time_ms % 1)
+ * get_time_ms() -- Returns the time in ms (includes seconds). Suitable for sessions up to 1 hour.
  */
 int get_time_ms();
 
@@ -23,5 +23,7 @@ int interval_elapsed(int t1, int t2, int interval);
  * Returns 1 if the difference is greater than the specified interval, otherwise 0
  */
 int interval_elapsed_cur(int t, int interval);
+
+int get_diff_ms(int t1, int t2);
 
 #endif

@@ -2,16 +2,15 @@
 
 
 /*
- * get_time_ms() -- Returns the time in ms. Limited to 1 second timeframe (time_ms % 1)
+ * get_time_ms() -- Returns the time in ms (includes seconds). Suitable for sessions up to 1 hour.
  */
 int get_time_ms(){
     struct timespec time;
     clock_gettime(CLOCK_MONOTONIC, &time);
 
-    double ns = (double)time.tv_nsec;
-    int ms = (ns / pow(10, 6));
+    int ms = (time.tv_sec * 1000) + (time.tv_nsec / 1000000);
 
-    return ms; // value 0-999.999
+    return ms;
 }
 
 /*
@@ -25,10 +24,6 @@ int get_time_ms(){
 int interval_elapsed(int t1, int t2, int interval){
     int diff = t2 - t1;
 
-    if (diff < 0){
-        diff += 1000;
-    }
-
     return diff >= interval ? 1 : 0;
 }
 
@@ -40,9 +35,11 @@ int interval_elapsed_cur(int t, int interval){
     int cur = get_time_ms();
     int diff = cur - t;
 
-    if (diff < 0){
-        diff += 1000;
-    }
-
     return diff >= interval ? 1 : 0;
+}
+
+int get_diff_ms(int t1, int t2){
+    int diff = t1 - t2;
+
+    return diff;
 }

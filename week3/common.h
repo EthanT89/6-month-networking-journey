@@ -31,6 +31,7 @@
 #define REJECT_CONNECTION_ID 667 // reject an attempted connection to the server (often from being full)
 #define YOUR_ID_IS 1001 // User ID update
 #define POSITION_CORRECTION_ID 1002 // positional client correction
+#define LATENCY_CHECK_ID 1003 // round trip packet used to calculate latency
 
 // Viewport Symbols
 #define BOUNDARY_SYMBOL "X" // Represents a boundary on the map
@@ -42,5 +43,10 @@
 // Commands INT form
 #define UPDATE_USERNAME 55 // request to update a player's username
 #define RESET_COORDS 56 // request to reset a player's coordinates
+
+struct Network {
+    int latency_ms;
+    int last_tick_sent;
+};
 
 #endif
