@@ -9,6 +9,7 @@
 #include "./utils/time_custom.h"
 #include "./utils/treasure.h"
 #include "./proxy_v2/utils/proxy_utils.h"
+#include "./utils/reliable_packet.h"
 
 // Standard socket/server libraries
 #include <string.h>
@@ -44,6 +45,8 @@ struct User {
     unsigned char name[MAXUSERNAME];
     int stale;
 
+    struct ReliablePacketSLL *ack_packets;
+    int ack_seq_ct;
     struct Network *network;
     struct Players *players;
     struct Treasures *treasures;
@@ -135,6 +138,42 @@ void send_packet(int sockfd, struct addrinfo *p, unsigned char packet[MAXBUFSIZE
     }
 }
 
+void insert_seq_num(unsigned char packet[MAXBUFSIZE], int *packet_size, int seq_num){
+    memmove(packet+6, packet+4, *packet_size - 4);
+    packi16(packet+4, seq_num);
+    *packet_size += 2;
+}
+
+void send_ack_packet(int sockfd, struct addrinfo *p, unsigned char packet[MAXBUFSIZE], int packet_size, struct User *user){
+    struct ReliablePacket *reliable_packet = malloc(sizeof *reliable_packet);
+    reliable_packet->next = NULL;
+    reliable_packet->retry_ct = 0;
+    reliable_packet->seq_num = user->ack_seq_ct++;
+    reliable_packet->time_sent = get_time_ms();
+    
+    insert_seq_num(packet, &packet_size, reliable_packet->seq_num);
+    
+    memcpy(reliable_packet->data, packet, packet_size);
+    reliable_packet->data_len = packet_size;
+    
+    add_reliable_packet(user->ack_packets, reliable_packet);
+
+    if (send_proxy(sockfd, packet, packet_size, 0, p->ai_addr, p->ai_addrlen) == -1){
+        perror("client: send\n");
+        exit(1);
+    }
+}
+
+void resend_ack_packet(int sockfd, struct addrinfo *p, struct ReliablePacket *packet, struct User *user){
+    if (packet->retry_ct++ >= 3){
+        remove_reliable_packet(user->ack_packets, packet->seq_num);
+        return;
+    }
+
+    packet->time_sent = get_time_ms();
+    send_packet(sockfd, p, packet->data, packet->data_len);
+}
+
 /*
  * update_username() -- prompt for new username, update the locally stored username, then send an update to the server
  */
@@ -162,7 +201,7 @@ void update_username(int sockfd, struct addrinfo *p, struct termios *original_se
     prepend_i16(update, COMMAND_ID);
     prepend_i16(update, APPID);
 
-    send_packet(sockfd, p, update, 6 + len);
+    send_ack_packet(sockfd, p, update, 6 + len, user);
 }
 
 /*
@@ -171,14 +210,14 @@ void update_username(int sockfd, struct addrinfo *p, struct termios *original_se
 void reset_coords(int sockfd, struct addrinfo *p, struct User *user){
     unsigned char update[MAXBUFSIZE];
 
-    user->x = 0;
-    user->y = 0;
+    //user->x = 1;
+    //user->y = 1;
 
     prepend_i16(update, RESET_COORDS);
     prepend_i16(update, COMMAND_ID);
     prepend_i16(update, APPID);
 
-    send_packet(sockfd, p, update, 6);
+    send_ack_packet(sockfd, p, update, 6, user);
 }
 
 /*
@@ -306,7 +345,7 @@ void print_gamestate(struct Players *players, struct User *user){
 
     if (cur != NULL){
         for (cur; cur != NULL; cur = cur->next){
-            printf("|  %-6.6s     |  (%+-2.2d,%+-2.2d)  |  %-2.2d pts  |   %-3.3dms   |\n", cur->username, cur->x, cur->y, cur->score, user->network->latency_ms);
+            printf("|  %-6.6s     |  (%+-2.2d,%+-2.2d)  |  %-2.2d pts  |  %-3.3dms   |\n", cur->username, cur->x, cur->y, cur->score, user->network->latency_ms);
         }
         printf("|_____________|_____________|__________|__________|\n\n");
     }
@@ -448,6 +487,16 @@ int validate_movement(char input, struct User *user){
     return 1;
 }
 
+void ping_server(int sockfd, struct addrinfo *p, struct User *user){
+    unsigned char packet[MAXBUFSIZE];
+    int offset = 0;
+
+    packi16(packet+offset, APPID); offset += 2;
+    packi16(packet+offset, LATENCY_CHECK_ID); offset += 2;
+
+    send_ack_packet(sockfd, p, packet, offset, user);
+}
+
 /*
  * handle_keypress() -- handles keypress logic - commands, quitting, and 'wasd' movements
  */
@@ -504,9 +553,9 @@ void handle_startup(int sockfd, struct addrinfo *p, struct User *user){
     input_len = strlen(input);
     strcat(user->name, input);
 
-    prepend_i16(input, UPDATE_ID);
+    prepend_i16(input, CONNECTION_REQUEST);
     prepend_i16(input, APPID);
-    send_packet(sockfd, p, input, input_len + 4);
+    send_ack_packet(sockfd, p, input, input_len + 4, user);
 }
 
 /*
@@ -646,18 +695,17 @@ void handle_position_correction(struct User *user, unsigned char buf[MAXBUFSIZE]
     user->stale = 1;
 }
 
-void handle_latency_packet(int sockfd, struct addrinfo *p, struct User *user){
+void handle_latency_packet(int sockfd, struct addrinfo *p, struct User *user, unsigned char buf[MAXBUFSIZE]){
     int RTT = get_diff_ms(get_time_ms(), user->network->last_tick_sent);
     user->network->latency_ms = RTT/2;
     user->network->last_tick_sent = get_time_ms();
 
-    unsigned char packet[MAXBUFSIZE];
-    int offset = 0;
+    ping_server(sockfd, p, user);
+}
 
-    packi16(packet+offset, APPID); offset += 2;
-    packi16(packet+offset, LATENCY_CHECK_ID); offset += 2;
-
-    send_packet(sockfd, p, packet, offset);
+void handle_ack_packet(struct User *user, unsigned char buf[MAXBUFSIZE]){
+    int seq_num = unpacki16(buf+STARTING_OFFSET);
+    remove_reliable_packet(user->ack_packets, seq_num);
 }
 
 /*
@@ -719,7 +767,14 @@ void handle_data(int sockfd, struct addrinfo *p, struct Players *players, struct
     }
 
     if (msg_id == LATENCY_CHECK_ID){
-        handle_latency_packet(sockfd, p, user);
+        handle_latency_packet(sockfd, p, user, buf);
+        handle_ack_packet(user, buf);
+        return;
+    }
+
+    if (msg_id == ACKID){
+        handle_ack_packet(user, buf);
+        return;
     }
 
 
@@ -751,7 +806,12 @@ int main(void)
 
     struct Network *network = malloc(sizeof *network);
     network->last_tick_sent = 0;
-    network->latency_ms = 0;
+    network->latency_ms = 100;
+
+    struct ReliablePacketSLL *ack_packets = malloc(sizeof *ack_packets);
+    ack_packets->count = 0;
+    ack_packets->head = NULL;
+    ack_packets->tail = NULL;
 
     struct User *user = malloc(sizeof *user);
     user->x = BOUNDX/2;
@@ -763,6 +823,7 @@ int main(void)
     memset(user->name, 0, MAXUSERNAME);
     user->players = players; // TODO: completely refactor to use user->players, rather than just players, currently split
     user->treasures = treasures;
+    user->ack_packets = ack_packets;
 
 
     struct pollfd *pfds = malloc(sizeof *pfds);
@@ -775,6 +836,7 @@ int main(void)
     tcgetattr(STDIN_FILENO, &original_settings);
 
     handle_startup(sockfd, p, user);
+    int ack_timeout = 3 * network->latency_ms;
 
     int botmode = 0;
     int last_tick = 0;
@@ -791,16 +853,35 @@ int main(void)
         user->name[len-1] = '\0';
         len--;
     }
-    handle_latency_packet(sockfd, p, user);
+    ping_server(sockfd, p, user);
+    printf("setup complete.\n");
     
     while (1){
+
+        // check for data
+        if (poll(pfds, 1, 0) > 0){
+            handle_data(sockfd, p, players, user, &original_settings);
+            user->stale = 1;
+        }
+
+        // check for ack timeouts
+
+        struct ReliablePacket *res = check_for_timeout(user->ack_packets, (ack_timeout = user->network->latency_ms * 3));
+        if (res != NULL){
+            printf("resending packet (id %d)\n", unpacki16(res->data + 2));
+            resend_ack_packet(sockfd, p, res, user);
+        }
+
+        // user input
         char input;
         int n = read(STDIN_FILENO, &input, 1);
-        if (n > 0 && interval_elapsed_cur(last_tick, botmode==1 ? 1 : 1) == 1 && handle_keypress(sockfd, p, input, &original_settings, user, &last_tick) == 0) { // TODO: find a better way to limit moves/sec
+        if (n > 0 && interval_elapsed_cur(last_tick, botmode==1 ? 1 : 20) == 1 && handle_keypress(sockfd, p, input, &original_settings, user, &last_tick) == 0) { // TODO: find a better way to limit moves/sec
             break;
         }
 
+        // bot moves
         if (botmode == 1 && interval_elapsed_cur(last_tick, next_move) == 1){
+            last_tick = get_time_ms();
             unsigned char botmove = 'w';
             int random = rand() % 2;
 
@@ -833,19 +914,44 @@ int main(void)
             next_move = rand() % 450 + 50;
         }
 
-        if (user->stale == 1 && interval_elapsed_cur(last_tick, 0) == 1){
+        // print updated gamestate
+        if (user->stale == 1 && 0 == 0){
             print_gamestate(players, user);
-            last_tick = get_time_ms();
             user->stale = 0;
         }
 
-        if (poll(pfds, 1, 0) > 0){
-            handle_data(sockfd, p, players, user, &original_settings);
-            user->stale = 1;
-        }
+
     }
 
     handle_shutdown(sockfd, &original_settings, p);
 }
 
 // TODO: add ACK for treasures, connections, player updates, etc.
+/*
+ 
+ Design:
+
+ Need to create a structure for containing ACK'd packets. Must be easy/quick to navigate, remove elements, and each element should have their own attributes
+
+ For each reliable packet, I need to track packet data (unsigned char buf[MAXBUFSIZE]), time sent (int ms), retry_count (int), packet byte length, sequence num
+
+ When a reliable packet is sent, a reliable packet struct is created and appended to the ack packet list. Every loop, the list is iterated through, checking
+ for packets that are timed out. It will resend this packet if a certain threshold is met (probably 1.5x the ping time). If it is re-sent more than 3 or so times
+ the packet is just dropped, no more retries.
+
+ On the client side, all packets have been sent via send_packet(). This will not cover all cases anymore, thus a new function, send_reliable_packet(), will
+ need to be created.
+
+ Server side will need to send back ACK's for these packets, APPID + ACKID + SEQNUM - 6bytes. 
+
+ Client will search for ACKID packets, confirming when they are received.
+
+ Both server and client will need to use reliable packets for important packets. Thus,  this logic should be extracted into a util file.
+
+ DLL - O(1) insert, O(n) delete, O(n) search
+ SLL - O(1) insert, O(n) delete, O(n) search
+
+ Go with SLL?
+ 
+
+ */
