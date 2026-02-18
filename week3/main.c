@@ -33,11 +33,19 @@ struct State {
     int sockfd;
     int player_id_ct;
     int treasure_id_ct;
+    int ack_seq_ct;
 
+    struct ReliablePacketSLL *ack_packets;
     struct Network *network;
     struct Players *players;
     struct Treasures *treasures;
 };
+
+void insert_seq_num(unsigned char packet[MAXBUFSIZE], int *packet_size, int seq_num){
+    memmove(packet+6, packet+4, *packet_size - 4);
+    packi16(packet+4, seq_num);
+    *packet_size += 2;
+}
 
 void send_ack_confirmation(struct State *state, struct Player *player, int seq_num){
     unsigned char ack[MAXBUFSIZE];
@@ -48,6 +56,38 @@ void send_ack_confirmation(struct State *state, struct Player *player, int seq_n
     packi16(ack+offset, seq_num); offset += 2;
 
     send_proxy(state->sockfd, ack, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
+}
+
+
+void send_ack_packet(struct Player *player, unsigned char packet[MAXBUFSIZE], int packet_size, struct State *state){
+    struct ReliablePacket *reliable_packet = malloc(sizeof *reliable_packet);
+    reliable_packet->next = NULL;
+    reliable_packet->retry_ct = 0;
+    reliable_packet->seq_num = state->ack_seq_ct++;
+    reliable_packet->time_sent = get_time_ms();
+    reliable_packet->client_id = player->id;
+    
+    insert_seq_num(packet, &packet_size, reliable_packet->seq_num);
+    
+    memcpy(reliable_packet->data, packet, packet_size);
+    reliable_packet->data_len = packet_size;
+    
+    add_reliable_packet(state->ack_packets, reliable_packet);
+
+    send_proxy(state->sockfd, reliable_packet->data, reliable_packet->data_len, 0, (struct sockaddr*)&player->addr, player->addrlen);
+}
+
+void resend_ack_packet(struct ReliablePacket *packet, struct State *state){
+    if (packet->retry_ct++ >= 3){
+        printf("failed to send packet of type -%d-\n", unpacki16(packet->data + 4));
+        remove_reliable_packet(state->ack_packets, packet->seq_num);
+        return;
+    }
+
+    struct Player *player = get_player_by_id(state->players, packet->client_id);
+    packet->time_sent = get_time_ms();
+
+    send_proxy(state->sockfd, packet->data, packet->data_len, 0, (struct sockaddr*)&player->addr, player->addrlen);
 }
 
 /*
@@ -66,7 +106,7 @@ void broadcast_treasure_all(struct State *state, struct Treasure *treasure){
 
     struct Player *cur = state->players->head;
     for (cur; cur != NULL; cur = cur->next){
-        send_proxy(state->sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
+        send_ack_packet(cur, update, offset, state);
     }
 }
 
@@ -84,7 +124,9 @@ void broadcast_treasure_single(struct Player *player, struct Treasure *treasure,
     packi16(update+offset, treasure->y); offset += 2;
     packi16(update+offset, treasure->value); offset += 2;
 
-    send_proxy(state->sockfd, update, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
+    printf("sending single treasure...\n");
+    send_ack_packet(player, update, offset, state);
+    // send_proxy(state->sockfd, update, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
 }
 
 /*
@@ -100,7 +142,8 @@ void broadcast_treasure_removal(struct State *state, int id){
 
     struct Player *cur = state->players->head;
     for (cur; cur != NULL; cur = cur->next){
-        send_proxy(state->sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
+        send_ack_packet(cur, update, offset, state);
+        //send_proxy(state->sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
     }
 }
 
@@ -196,28 +239,30 @@ void construct_user_update_packet(struct Player *player, unsigned char packet[MA
 /*
  * send_all_users_data() -- send a SINGLE player's info to ALL players
  */
-void send_user_update_all(int sockfd, struct Players *players, struct Player *player){
+void send_user_update_all(struct State *state, struct Player *player){
     unsigned char update[MAXBUFSIZE];
     construct_user_update_packet(player, update);
     
-    struct Player *cur = players->head;
+    struct Player *cur = state->players->head;
     for (cur; cur != NULL; cur = cur->next){
         if (cur->id == player->id){
             continue;
         }
-        send_proxy(sockfd, update, strlen(update+6)+6, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
+        send_ack_packet(cur, update, strlen(update+6)+6, state);
+        // send_proxy(sockfd, update, strlen(update+6)+6, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
     }
 }
 
 /*
  * send_user_update_all() -- send EVERY players' info to ONE player.
  */
-void send_all_users_data(int sockfd, struct Players *players, struct Player *player){
-    struct Player *cur = players->head;
+void send_all_users_data(struct State *state, struct Player *player){
+    struct Player *cur = state->players->head;
     for (cur; cur != NULL; cur = cur->next){
         unsigned char update[MAXBUFSIZE];
         construct_user_update_packet(cur, update);
-        send_proxy(sockfd, update, strlen(update+6)+6, 0, (struct sockaddr*)&player->addr, player->addrlen);
+        send_ack_packet(player, update, strlen(update+6)+6, state);
+        // send_proxy(sockfd, update, strlen(update+6)+6, 0, (struct sockaddr*)&player->addr, player->addrlen);
     }
 }
 
@@ -254,14 +299,15 @@ void handle_command(struct State *state, struct Player *player, unsigned char co
         printf("updating username: %s\n", command+4);
         strncpy(player->username, command+4, MAXUSERNAME);
 
-        send_user_update_all(sockfd, state->players, player);
+        send_user_update_all(state, player);
         return;
     }
 
     if (command_id == RESET_COORDS){
-        printf("resetting coords for %s\n", player->username);
-        player->x = rand() % BOUNDX-2;
-        player->y = rand() % BOUNDY-2;
+        printf("resetting %s\n", player->username);
+        player->x = rand() % (BOUNDX-2);
+        player->y = rand() % (BOUNDY-2);
+        player->score = 0;
         send_position_correction(state->sockfd, player);
         return;
     }
@@ -273,7 +319,7 @@ void handle_command(struct State *state, struct Player *player, unsigned char co
 /*
  * send_user_id() -- send a player their user id
  */
-void send_user_id(int sockfd, struct Player *player){
+void send_user_id(struct State *state, struct Player *player){
     unsigned char packet[MAXBUFSIZE];
     int offset = 0;
 
@@ -281,7 +327,8 @@ void send_user_id(int sockfd, struct Player *player){
     packi16(packet+offset, YOUR_ID_IS); offset += 2;
     packi16(packet+offset, player->id); offset += 2;
 
-    send_proxy(sockfd, packet, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
+    send_ack_packet(player, packet, offset, state);
+    // send_proxy(sockfd, packet, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
 }
 
 /*
@@ -324,9 +371,9 @@ void handle_new_connection(int sockfd, struct sockaddr_in addr, socklen_t addr_l
 
     strncpy(new_player->username, data, len);
 
-    send_user_update_all(sockfd, state->players, new_player); // send new player info to ALL players
-    send_all_users_data(sockfd, state->players, new_player); // send all current player data to new player
-    send_user_id(sockfd, new_player); // send user id
+    send_user_update_all(state, new_player); // send new player info to ALL players
+    send_all_users_data(state, new_player); // send all current player data to new player
+    send_user_id(state, new_player); // send user id
     send_position_correction(sockfd, new_player); // send current coordinates
 
     add_player(state->players, new_player);
@@ -430,8 +477,6 @@ void handle_update(struct Player *player, unsigned char data[MAXBUFSIZE], int so
  * Currently does not handle unintentional connections.
  */
 void handle_disconnection(int sockfd, struct State *state, int id){
-    remove_player(state->players, id);
-
     unsigned char update[MAXBUFSIZE];
     int offset = 0;
 
@@ -441,8 +486,13 @@ void handle_disconnection(int sockfd, struct State *state, int id){
 
     struct Player *cur = state->players->head;
     for (cur; cur != NULL; cur = cur->next){
-        send_proxy(sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
+        if (cur->id == id){
+            send_proxy(sockfd, update, offset, 0, (struct sockaddr*)&cur->addr, cur->addrlen);
+            continue;
+        }
+        send_ack_packet(cur, update, offset, state);
     }
+    remove_player(state->players, id);
 }
 
 /*
@@ -482,6 +532,11 @@ void check_for_inactivity(int sockfd, struct State *state, struct Players *playe
             handle_disconnection(sockfd, state, cur->id);
         }
     }
+}
+
+void handle_ack_packet(struct State *state, unsigned char buf[MAXBUFSIZE]){
+    int seq_num = unpacki16(buf);
+    remove_reliable_packet(state->ack_packets, seq_num);
 }
 
 /*
@@ -543,6 +598,12 @@ void handle_data(int sockfd, struct State *state){
 
     if (msg_type == LATENCY_CHECK_ID){
         handle_latency_check(sockfd, state, sender, data);
+        return;
+    }
+
+    if (msg_type == ACKID){
+        handle_ack_packet(state, data);
+        return;
     }
 }
 
@@ -594,6 +655,7 @@ int main(void)
     printf("Starting server...\n");
     int last_tick = 0;
     int sockfd = get_socket();
+    int packet_timeout = 500;
 
     struct Treasures *treasures = malloc(sizeof *treasures);
     treasures->count = 0;
@@ -607,13 +669,20 @@ int main(void)
     network->last_tick_sent = 0;
     network->latency_ms = 0;
 
+    struct ReliablePacketSLL *ack_packets = malloc(sizeof *ack_packets);
+    ack_packets->count = 0;
+    ack_packets->head = NULL;
+    ack_packets->tail = NULL;
+
     struct State *state = malloc(sizeof *state);
     state->player_id_ct = 1;
     state->treasure_id_ct = 1;
+    state->ack_seq_ct = 1;
     state->treasures = treasures;
     state->players = players;
     state->sockfd = sockfd;
     state->network = network;
+    state->ack_packets = ack_packets;
     
     create_initial_treasures(state);
 
@@ -637,6 +706,11 @@ int main(void)
         // Received some kind of data
         if (poll(pfds, 1, 0) == 1){
             handle_data(sockfd, state); // handle data
-        }        
+        }
+
+        struct ReliablePacket *delayed_packet = check_for_timeout(state->ack_packets, packet_timeout);
+        if (delayed_packet != NULL){
+            resend_ack_packet(delayed_packet, state);
+        }
     }
 }

@@ -17,6 +17,7 @@ struct ReliablePacket {
     int time_sent;
     int retry_ct;
     int seq_num;
+    int client_id;
 
     struct ReliablePacket *next;
 };

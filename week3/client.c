@@ -144,12 +144,20 @@ void insert_seq_num(unsigned char packet[MAXBUFSIZE], int *packet_size, int seq_
     *packet_size += 2;
 }
 
+int extract_seq_num(unsigned char packet[MAXBUFSIZE]){
+    // assuming seq num position to be bytes 5 and 6
+    int seq_num = unpacki16(packet+STARTING_OFFSET);
+    memmove(packet+4, packet+6, MAXBUFSIZE-6);
+    return seq_num;
+}
+
 void send_ack_packet(int sockfd, struct addrinfo *p, unsigned char packet[MAXBUFSIZE], int packet_size, struct User *user){
     struct ReliablePacket *reliable_packet = malloc(sizeof *reliable_packet);
     reliable_packet->next = NULL;
     reliable_packet->retry_ct = 0;
     reliable_packet->seq_num = user->ack_seq_ct++;
     reliable_packet->time_sent = get_time_ms();
+    reliable_packet->client_id = 0;
     
     insert_seq_num(packet, &packet_size, reliable_packet->seq_num);
     
@@ -174,6 +182,17 @@ void resend_ack_packet(int sockfd, struct addrinfo *p, struct ReliablePacket *pa
 
     packet->time_sent = get_time_ms();
     send_packet(sockfd, p, packet->data, packet->data_len);
+}
+
+void send_ack_confirmation(int sockfd, struct addrinfo *p, struct User *user, int seq_num){
+    unsigned char ack[MAXBUFSIZE];
+    int offset = 0;
+
+    packi16(ack+offset, APPID); offset += 2;
+    packi16(ack+offset, ACKID); offset += 2;
+    packi16(ack+offset, seq_num); offset += 2;
+
+    send_packet(sockfd, p, ack, offset);
 }
 
 /*
@@ -618,9 +637,13 @@ void handle_user_update(struct Players *players, unsigned char buf[MAXBUFSIZE], 
 /*
  * handle_player_disconnect() -- removes a player from the player struct once the server notifies it that that client has disconnected
  */
-void handle_player_disconnect(struct Players *players, unsigned char buf[MAXBUFSIZE]){
+int handle_player_disconnect(struct Players *players, unsigned char buf[MAXBUFSIZE], struct User *user){
     int id = unpacki16(buf+STARTING_OFFSET);
+    if (id == user->id){
+        return 0;
+    }
     remove_player(players, id);
+    return 1;
 }
 
 /*
@@ -734,21 +757,33 @@ void handle_data(int sockfd, struct addrinfo *p, struct Players *players, struct
     }
 
     if (msg_id == USERUPDATE_ID){
+        int seq_num = extract_seq_num(buf);
+        send_ack_confirmation(sockfd, p, user, seq_num);
         handle_user_update(players, buf, bytes_received);
         return;
     }
 
     if (msg_id == EXIT_ID){
-        handle_player_disconnect(players, buf);
+        int seq_num = extract_seq_num(buf);
+        send_ack_confirmation(sockfd, p, user, seq_num);
+        
+        if (handle_player_disconnect(players, buf, user) == 0){
+            printf("\nThe server has kicked you.\n");
+            handle_shutdown(sockfd, original_settings, p);
+        }
         return;
     }
 
     if (msg_id == NEWTREASURE_ID){
+        int seq_num = extract_seq_num(buf);
+        send_ack_confirmation(sockfd, p, user, seq_num);
         handle_treasure(user, buf);
         return;
     }
 
     if (msg_id == DELTREASURE_ID){
+        int seq_num = extract_seq_num(buf);
+        send_ack_confirmation(sockfd, p, user, seq_num);
         handle_remove_treasure(user, buf);
         return;
     }
@@ -759,6 +794,8 @@ void handle_data(int sockfd, struct addrinfo *p, struct Players *players, struct
     }
 
     if (msg_id == YOUR_ID_IS){
+        int seq_num = extract_seq_num(buf);
+        send_ack_confirmation(sockfd, p, user, seq_num);
         handle_id_update(user, buf);
         return;
     }
