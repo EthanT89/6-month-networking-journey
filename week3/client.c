@@ -165,7 +165,9 @@ void send_ack_packet(int sockfd, struct addrinfo *p, unsigned char packet[MAXBUF
 }
 
 void resend_ack_packet(int sockfd, struct addrinfo *p, struct ReliablePacket *packet, struct User *user){
-    if (packet->retry_ct++ >= 3){
+    if (unpacki16(packet->data + 2) == LATENCY_CHECK_ID){
+        user->network->last_tick_sent = get_time_ms();
+    } else if (packet->retry_ct++ >= 3){
         remove_reliable_packet(user->ack_packets, packet->seq_num);
         return;
     }
@@ -868,7 +870,7 @@ int main(void)
 
         struct ReliablePacket *res = check_for_timeout(user->ack_packets, (ack_timeout = user->network->latency_ms * 3));
         if (res != NULL){
-            printf("resending packet (id %d)\n", unpacki16(res->data + 2));
+            // printf("resending packet (id %d)\n", unpacki16(res->data + 2));
             resend_ack_packet(sockfd, p, res, user);
         }
 
