@@ -186,6 +186,7 @@ int main(int argc, char **argv){
 
     int drop_rate;
     int delay;
+    int latency_tick = get_time_ms();
 
     // If user entered a command line argument, interpret it as the new delay time in ms
     if (argc > 1){
@@ -217,16 +218,7 @@ int main(int argc, char **argv){
             send_packet(sockfd, packets, stats);
         }
 
-        // Print the current statistics every 900ms - TODO: enhance the statistics by 1) modularizing the printing functionality
-        // and 2) exporting the stats somehow (file/database)
-        if (interval_elapsed_cur(last_update, 900) == 1){
-            printf("\n=== Current Stats ===\n");
-            printf("Packets Received: %d\n", stats->packets_received);
-            printf("Packets Forwarded: %d\n", stats->packets_forwarded);
-            printf("Packets Dropped: %d\n", stats->packets_dropped);
-            printf("Latency: %dms\n\n", stats->latency);
-            last_update = get_time_ms();
-
+        if (interval_elapsed_cur(latency_tick, 500) == 1){
             if (packets->delay_ms > (delay + 2*variance)){
                 packets->delay_ms -= (rand() % variance);
             } else if (packets->delay_ms < (delay - 2*variance)) {
@@ -240,8 +232,18 @@ int main(int argc, char **argv){
             }
 
             stats->latency = packets->delay_ms;
+            latency_tick = get_time_ms();
+        }
 
-
+        // Print the current statistics every 900ms - TODO: enhance the statistics by 1) modularizing the printing functionality
+        // and 2) exporting the stats somehow (file/database)
+        if (interval_elapsed_cur(last_update, 10) == 1){
+            printf("\n=== Current Stats ===\n");
+            printf("Packets Received: %d\n", stats->packets_received);
+            printf("Packets Forwarded: %d\n", stats->packets_forwarded);
+            printf("Packets Dropped: %d\n", stats->packets_dropped);
+            printf("Latency: %dms\n\n", stats->latency);
+            last_update = get_time_ms();
         }
 
     }
