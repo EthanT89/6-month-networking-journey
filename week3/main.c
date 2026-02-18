@@ -9,6 +9,7 @@
 #include "./common.h"
 #include "./utils/treasure.h"
 #include "./proxy_v2/utils/proxy_utils.h"
+#include "./utils/reliable_packet.h"
 
 // Standard socket/server libraries
 #include <string.h>
@@ -37,6 +38,17 @@ struct State {
     struct Players *players;
     struct Treasures *treasures;
 };
+
+void send_ack_confirmation(struct State *state, struct Player *player, int seq_num){
+    unsigned char ack[MAXBUFSIZE];
+    int offset = 0;
+
+    packi16(ack+offset, APPID); offset += 2;
+    packi16(ack+offset, ACKID); offset += 2;
+    packi16(ack+offset, seq_num); offset += 2;
+
+    send_proxy(state->sockfd, ack, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
+}
 
 /*
  * broadcast_treasure_all() -- broadcast the data of a treasure to all players to update the game state. x, y, and points values are sent.
@@ -210,33 +222,6 @@ void send_all_users_data(int sockfd, struct Players *players, struct Player *pla
 }
 
 /*
- * handle_command() -- unpack and handle any incoming commands. Ignore unhandled commands.
- *
- * Available commands:
- * 'update_username' - update an existing user's username, then broadcast this update to all connected users
- * 'reset_coords' - reset an existing user's coordinates to (0,0), and broadcast this update to all connected users
- */
-void handle_command(struct State *state, struct Player *player, unsigned char command[MAXBUFSIZE], int sockfd){
-    int command_id = unpacki16(command);
-
-    if (command_id == UPDATE_USERNAME){
-        printf("updating username: %s\n", command+2);
-        strncpy(player->username, command+2, MAXUSERNAME);
-
-        send_user_update_all(sockfd, state->players, player);
-        return;
-    }
-
-    if (command_id == RESET_COORDS){
-        printf("resetting coords for %s\n", player->username);
-        player->x = rand() % BOUNDX-2;
-        player->y = rand() % BOUNDY-2;
-        return;
-    }
-
-}
-
-/*
  * send_position_correction() -- send a positional correction packet to the designated player
  */
 void send_position_correction(int sockfd, struct Player *player){
@@ -251,6 +236,39 @@ void send_position_correction(int sockfd, struct Player *player){
 
     send_proxy(sockfd, packet, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
 }
+
+/*
+ * handle_command() -- unpack and handle any incoming commands. Ignore unhandled commands.
+ *
+ * Available commands:
+ * 'update_username' - update an existing user's username, then broadcast this update to all connected users
+ * 'reset_coords' - reset an existing user's coordinates to (0,0), and broadcast this update to all connected users
+ */
+void handle_command(struct State *state, struct Player *player, unsigned char command[MAXBUFSIZE], int sockfd){
+    int seq_num = unpacki16(command);
+    int command_id = unpacki16(command+2);
+
+    send_ack_confirmation(state, player, seq_num);
+
+    if (command_id == UPDATE_USERNAME){
+        printf("updating username: %s\n", command+4);
+        strncpy(player->username, command+4, MAXUSERNAME);
+
+        send_user_update_all(sockfd, state->players, player);
+        return;
+    }
+
+    if (command_id == RESET_COORDS){
+        printf("resetting coords for %s\n", player->username);
+        player->x = rand() % BOUNDX-2;
+        player->y = rand() % BOUNDY-2;
+        send_position_correction(state->sockfd, player);
+        return;
+    }
+
+}
+
+
 
 /*
  * send_user_id() -- send a player their user id
@@ -273,7 +291,9 @@ void send_user_id(int sockfd, struct Player *player){
  * new user's info to all connected users.
  */
 void handle_new_connection(int sockfd, struct sockaddr_in addr, socklen_t addr_len, unsigned char data[MAXBUFSIZE], struct State *state){
-    
+    int seq_num = unpacki16(data);
+    memmove(data, data+2, MAXBUFSIZE-2);
+
     struct Player *new_player = malloc(sizeof *new_player);
     new_player->addr = addr;
     new_player->addrlen = addr_len;
@@ -282,6 +302,8 @@ void handle_new_connection(int sockfd, struct sockaddr_in addr, socklen_t addr_l
     new_player->x = (rand() % (BOUNDX-2)) + 1;
     new_player->y = (rand() % (BOUNDY-2)) + 1;
     new_player->last_received_packet = get_time_ms();
+
+    send_ack_confirmation(state, new_player, seq_num);
 
     // extract username
     size_t len = strlen(data);
@@ -438,12 +460,14 @@ void handle_reject_connection(int sockfd, struct sockaddr_in * addr, socklen_t a
     send_proxy(sockfd, buf, offset, 0, (struct sockaddr*)addr, addr_len);
 }
 
-void handle_latency_check(int sockfd, struct State *state, struct Player *player){
+void handle_latency_check(int sockfd, struct State *state, struct Player *player, unsigned char data[MAXBUFSIZE]){
     unsigned char packet[MAXBUFSIZE];
     int offset = 0;
+    int seq_num = unpacki16(data);
 
     packi16(packet+offset, APPID); offset += 2;
     packi16(packet+offset, LATENCY_CHECK_ID); offset += 2;
+    packi16(packet+offset, seq_num); offset += 2;
 
     send_proxy(sockfd, packet, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
 }
@@ -453,7 +477,7 @@ void check_for_inactivity(int sockfd, struct State *state, struct Players *playe
     struct Player *cur = players->head;
 
     for (cur; cur != NULL; cur = cur->next){
-        if (interval_elapsed_cur(cur->last_received_packet, 5000) == 1){
+        if (interval_elapsed_cur(cur->last_received_packet, 20000) == 1){
             printf("%s timed out.\n", cur->username);
             handle_disconnection(sockfd, state, cur->id);
         }
@@ -492,7 +516,7 @@ void handle_data(int sockfd, struct State *state){
             handle_reject_connection(sockfd, their_addr, their_len);
             return;
         }
-        if (msg_type == UPDATE_ID){
+        if (msg_type == CONNECTION_REQUEST){
             printf("new connection!\n");
             handle_new_connection(sockfd, *their_addr, their_len, data, state);
         }
@@ -518,7 +542,7 @@ void handle_data(int sockfd, struct State *state){
     }
 
     if (msg_type == LATENCY_CHECK_ID){
-        handle_latency_check(sockfd, state, sender);
+        handle_latency_check(sockfd, state, sender, data);
     }
 }
 
