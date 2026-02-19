@@ -44,6 +44,7 @@ struct User {
     int score;
     unsigned char name[MAXUSERNAME];
     int stale;
+    int connected;
 
     struct ReliablePacketSLL *ack_packets;
     int ack_seq_ct;
@@ -766,7 +767,7 @@ void handle_data(int sockfd, struct addrinfo *p, struct Players *players, struct
     if (msg_id == EXIT_ID){
         int seq_num = extract_seq_num(buf);
         send_ack_confirmation(sockfd, p, user, seq_num);
-        
+
         if (handle_player_disconnect(players, buf, user) == 0){
             printf("\nThe server has kicked you.\n");
             handle_shutdown(sockfd, original_settings, p);
@@ -813,6 +814,14 @@ void handle_data(int sockfd, struct addrinfo *p, struct Players *players, struct
 
     if (msg_id == ACKID){
         handle_ack_packet(user, buf);
+        return;
+    }
+
+    if (msg_id == CONNECTION_CONFIRMATION){
+        int seq_num = extract_seq_num(buf);
+        send_ack_confirmation(sockfd, p, user, seq_num);
+        fflush(stdout);
+        user->connected = 1;
         return;
     }
 
@@ -885,6 +894,11 @@ int main(void)
         botmode = 1;
     }
 
+    int game_ready = 0;
+    int start_time = get_time_ms();
+    int last_startup_print = get_time_ms();
+    int startup_time = 2500;
+
     set_nonblocking_mode();
 
     int len = strlen(user->name);
@@ -894,8 +908,25 @@ int main(void)
     }
     ping_server(sockfd, p, user);
     printf("setup complete.\n");
+    printf("\nconnecting to server.");
+    fflush(stdout);
     
     while (1){
+
+        if (game_ready == 0 && interval_elapsed_cur(last_startup_print, 400) == 1){
+            last_startup_print = get_time_ms();
+            printf(".");
+            fflush(stdout);
+            if (interval_elapsed_cur(start_time, startup_time) == 1){
+                game_ready = 1;
+                printf("\n\n");
+
+                if (user->connected == 0){
+                    printf("failed to connect to server.\n");
+                    handle_shutdown(sockfd, &original_settings, p);
+                }
+            }
+        }
 
         // check for data
         if (poll(pfds, 1, 0) > 0){
@@ -911,55 +942,55 @@ int main(void)
             resend_ack_packet(sockfd, p, res, user);
         }
 
-        // user input
-        char input;
-        int n = read(STDIN_FILENO, &input, 1);
-        if (n > 0 && interval_elapsed_cur(last_tick, botmode==1 ? 1 : 20) == 1 && handle_keypress(sockfd, p, input, &original_settings, user, &last_tick) == 0) { // TODO: find a better way to limit moves/sec
-            break;
-        }
-
-        // bot moves
-        if (botmode == 1 && interval_elapsed_cur(last_tick, next_move) == 1){
-            last_tick = get_time_ms();
-            unsigned char botmove = 'w';
-            int random = rand() % 2;
-
-            struct Treasure *treasure = find_nearest_treasure(user);
-            if (treasure == NULL){
-                continue;
+        if (game_ready == 1){
+           // user input
+            char input;
+            int n = read(STDIN_FILENO, &input, 1);
+            if (n > 0 && interval_elapsed_cur(last_tick, botmode==1 ? 1 : 20) == 1 && handle_keypress(sockfd, p, input, &original_settings, user, &last_tick) == 0) { // TODO: find a better way to limit moves/sec
+                break;
             }
 
-            if (user->x > treasure->x){
-                if (random == 1 && user->y != treasure->y){
-                    botmove = user->y > treasure->y ?  's' : 'w';
-                } else {
-                    botmove = 'a';
+            // bot moves
+            if (botmode == 1 && interval_elapsed_cur(last_tick, next_move) == 1){
+                last_tick = get_time_ms();
+                unsigned char botmove = 'w';
+                int random = rand() % 2;
+
+                struct Treasure *treasure = find_nearest_treasure(user);
+                if (treasure == NULL){
+                    continue;
                 }
-            } else if (user->x < treasure->x){
-                if (random == 1 && user->y != treasure->y){
-                    botmove = user->y > treasure->y ?  's' : 'w';
+
+                if (user->x > treasure->x){
+                    if (random == 1 && user->y != treasure->y){
+                        botmove = user->y > treasure->y ?  's' : 'w';
+                    } else {
+                        botmove = 'a';
+                    }
+                } else if (user->x < treasure->x){
+                    if (random == 1 && user->y != treasure->y){
+                        botmove = user->y > treasure->y ?  's' : 'w';
+                    } else {
+                        botmove = 'd';
+                    }
                 } else {
-                    botmove = 'd';
+                    if (user->y > treasure->y){
+                        botmove = 's';
+                    } else {
+                        botmove = 'w';
+                    }
                 }
-            } else {
-                if (user->y > treasure->y){
-                    botmove = 's';
-                } else {
-                    botmove = 'w';
-                }
+
+                handle_keypress(sockfd, p, botmove, &original_settings, user, &last_tick);
+                next_move = rand() % 450 + 50;
             }
 
-            handle_keypress(sockfd, p, botmove, &original_settings, user, &last_tick);
-            next_move = rand() % 450 + 50;
+            // print updated gamestate
+            if (user->stale == 1 && 0 == 0){
+                print_gamestate(players, user);
+                user->stale = 0;
+            }   
         }
-
-        // print updated gamestate
-        if (user->stale == 1 && 0 == 0){
-            print_gamestate(players, user);
-            user->stale = 0;
-        }
-
-
     }
 
     handle_shutdown(sockfd, &original_settings, p);

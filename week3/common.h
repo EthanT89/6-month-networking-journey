@@ -33,7 +33,8 @@
 #define POSITION_CORRECTION_ID 1002 // positional client correction
 #define LATENCY_CHECK_ID 1003 // round trip packet used to calculate latency
 #define ACKID 1004 // return ack packet 
-#define CONNECTION_REQUEST 1005
+#define CONNECTION_REQUEST 1005 // distinquishes an initial connection request
+#define CONNECTION_CONFIRMATION 1006 // confirms a successful connection to server
 
 // Viewport Symbols
 #define BOUNDARY_SYMBOL "X" // Represents a boundary on the map

@@ -78,8 +78,8 @@ void send_ack_packet(struct Player *player, unsigned char packet[MAXBUFSIZE], in
 }
 
 void resend_ack_packet(struct ReliablePacket *packet, struct State *state){
-    if (packet->retry_ct++ >= 3){
-        printf("failed to send packet of type -%d-\n", unpacki16(packet->data + 4));
+    if (packet->retry_ct++ >= 10){
+        printf("err: failed to send packet of type -%d-\n", unpacki16(packet->data + 2));
         remove_reliable_packet(state->ack_packets, packet->seq_num);
         return;
     }
@@ -88,6 +88,17 @@ void resend_ack_packet(struct ReliablePacket *packet, struct State *state){
     packet->time_sent = get_time_ms();
 
     send_proxy(state->sockfd, packet->data, packet->data_len, 0, (struct sockaddr*)&player->addr, player->addrlen);
+}
+
+void send_connection_confirmation(struct State *state, struct Player *player){
+    unsigned char packet[MAXBUFSIZE];
+    int offset = 0;
+
+    packi16(packet+offset, APPID); offset += 2;
+    packi16(packet+offset, CONNECTION_CONFIRMATION); offset += 2;
+    
+    send_ack_packet(player, packet, offset, state);
+    printf("sent connection\n");
 }
 
 /*
@@ -377,6 +388,8 @@ void handle_new_connection(int sockfd, struct sockaddr_in addr, socklen_t addr_l
     send_position_correction(sockfd, new_player); // send current coordinates
 
     add_player(state->players, new_player);
+
+    send_connection_confirmation(state, new_player);
 
     struct Treasure *cur = state->treasures->head;
     for (cur; cur != NULL; cur = cur->next){
