@@ -897,7 +897,7 @@ int main(void)
     int game_ready = 0;
     int start_time = get_time_ms();
     int last_startup_print = get_time_ms();
-    int startup_time = 2500;
+    int startup_time = 3000;
 
     set_nonblocking_mode();
 
