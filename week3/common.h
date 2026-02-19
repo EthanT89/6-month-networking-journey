@@ -47,9 +47,4 @@
 #define UPDATE_USERNAME 55 // request to update a player's username
 #define RESET_COORDS 56 // request to reset a player's coordinates
 
-struct Network {
-    int latency_ms;
-    int last_tick_sent;
-};
-
 #endif

@@ -26,6 +26,17 @@
 #include <fcntl.h>
 
 /*
+ * Network -- a simple struct for storing latency and the last tick that a ping was sent
+ *
+ * latency_ms -- current latency, RTT/2
+ * last_tick_sent -- the last tick that a ping was sent
+ */
+struct Network {
+    int latency_ms;
+    int last_tick_sent;
+};
+
+/*
  * User -- local struct for managing user-specific game state - coordinates, score, username, and a local copy of the current treasures
  *
  * id - current id of the player
@@ -34,6 +45,10 @@
  * score - current accumulative score of the player
  * name - the current player's username
  * stale - 0 if printed latest state, 1 if not
+ * connected - 0 if haven't received server connection confirmation, 1 if confirmed
+ * 
+ * ack_seq_ct -- incrementing global ack sequence number
+ * *ack_packets -- a linked list of all the ack_packets waiting to be confirmed
  * *treasures - a linked list of all the treasures currently in-game
  * *players -- a linked list of all of the players currently in-game
  */
@@ -139,12 +154,18 @@ void send_packet(int sockfd, struct addrinfo *p, unsigned char packet[MAXBUFSIZE
     }
 }
 
+/*
+ * insert_seq_num() -- insert a seq_num into the 4th and 5th bytes of a packet
+ */
 void insert_seq_num(unsigned char packet[MAXBUFSIZE], int *packet_size, int seq_num){
     memmove(packet+6, packet+4, *packet_size - 4);
     packi16(packet+4, seq_num);
     *packet_size += 2;
 }
 
+/*
+ * extract_seq_num() -- given an ack packet, extract it's seq_num
+ */
 int extract_seq_num(unsigned char packet[MAXBUFSIZE]){
     // assuming seq num position to be bytes 5 and 6
     int seq_num = unpacki16(packet+STARTING_OFFSET);
@@ -152,6 +173,9 @@ int extract_seq_num(unsigned char packet[MAXBUFSIZE]){
     return seq_num;
 }
 
+/*
+ * send_ack_packet() -- same functionality as send_packet, but implements ack functionality: inserts ack seq_num and adds to ack struct
+ */
 void send_ack_packet(int sockfd, struct addrinfo *p, unsigned char packet[MAXBUFSIZE], int packet_size, struct User *user){
     struct ReliablePacket *reliable_packet = malloc(sizeof *reliable_packet);
     reliable_packet->next = NULL;
@@ -173,6 +197,9 @@ void send_ack_packet(int sockfd, struct addrinfo *p, unsigned char packet[MAXBUF
     }
 }
 
+/*
+ * resend_ack_packet() -- when no ACK is received after a given timeframe, resends the packet and increments retry_ct
+ */
 void resend_ack_packet(int sockfd, struct addrinfo *p, struct ReliablePacket *packet, struct User *user){
     if (unpacki16(packet->data + 2) == LATENCY_CHECK_ID){
         user->network->last_tick_sent = get_time_ms();
@@ -185,6 +212,9 @@ void resend_ack_packet(int sockfd, struct addrinfo *p, struct ReliablePacket *pa
     send_packet(sockfd, p, packet->data, packet->data_len);
 }
 
+/*
+ * send_ack_confirmation() -- when a packet from the server needs ACK, send ack with seq_num
+ */
 void send_ack_confirmation(int sockfd, struct addrinfo *p, struct User *user, int seq_num){
     unsigned char ack[MAXBUFSIZE];
     int offset = 0;
@@ -465,6 +495,7 @@ void handle_command(int sockfd, struct addrinfo *p, unsigned char command[MAXCOM
     }
 
     printf("Unknown command! Use '/help' to see available commands.\n");
+    sleep(2);
 }
 
 /*
@@ -509,6 +540,9 @@ int validate_movement(char input, struct User *user){
     return 1;
 }
 
+/*
+ * ping_server() -- send a latency tracking packet to the server to track ping time
+ */
 void ping_server(int sockfd, struct addrinfo *p, struct User *user){
     unsigned char packet[MAXBUFSIZE];
     int offset = 0;
@@ -532,6 +566,8 @@ int handle_keypress(int sockfd, struct addrinfo *p, char input, struct termios *
     // handle command
     if (input == 'c'){
         unsigned char commmand[MAXCOMMANDSIZE];
+        //int c;
+        //while ((c = getchar()) != '\n' && c != EOF);
 
         restore_normal_terminal(original_settings);
         printf("Enter your command...\n");
@@ -593,14 +629,12 @@ void handle_position_update(struct Players *players, unsigned char buf[MAXBUFSIZ
         int score = unpacki16(buf+offset); offset += 2;
 
         struct Player *player = get_player_by_id(players, id);
-        if (id == user->id){
-            // user->x = x;
-            // user->y = y;
+        if (id == user->id){ // self
             user->score = score;
             continue;
         }
 
-        if (player == NULL){
+        if (player == NULL){ // unknown, skip
             continue;
         }
 
@@ -617,20 +651,17 @@ void handle_user_update(struct Players *players, unsigned char buf[MAXBUFSIZE], 
     int offset = STARTING_OFFSET;
     int id = unpacki16(buf+offset); offset += 2;
     unsigned char username[MAXUSERNAME];
-    printf("in handle user update!!\n");
 
     strncpy(username, buf+offset, MAXUSERNAME);
     struct Player *player = get_player_by_id(players, id);
 
     if (player == NULL){
-        printf("adding new player...\n");
         player = malloc(sizeof *player);
         player->id = id;
         strcpy(player->username, username);
         add_player(players, player);
         return;
     }
-    printf("okayt\n");
 
     strcpy(player->username, username);
 }
@@ -640,7 +671,7 @@ void handle_user_update(struct Players *players, unsigned char buf[MAXBUFSIZE], 
  */
 int handle_player_disconnect(struct Players *players, unsigned char buf[MAXBUFSIZE], struct User *user){
     int id = unpacki16(buf+STARTING_OFFSET);
-    if (id == user->id){
+    if (id == user->id){ // handle shutdown
         return 0;
     }
     remove_player(players, id);
@@ -721,6 +752,9 @@ void handle_position_correction(struct User *user, unsigned char buf[MAXBUFSIZE]
     user->stale = 1;
 }
 
+/*
+ * handle_latency_packet() -- track RTT of packet, convert to latency statistic
+ */
 void handle_latency_packet(int sockfd, struct addrinfo *p, struct User *user, unsigned char buf[MAXBUFSIZE]){
     int RTT = get_diff_ms(get_time_ms(), user->network->last_tick_sent);
     user->network->latency_ms = RTT/2;
@@ -729,6 +763,9 @@ void handle_latency_packet(int sockfd, struct addrinfo *p, struct User *user, un
     ping_server(sockfd, p, user);
 }
 
+/*
+ * handle_ack_packet() -- clear corresponding pending ack packet from the reliable ack struct
+ */
 void handle_ack_packet(struct User *user, unsigned char buf[MAXBUFSIZE]){
     int seq_num = unpacki16(buf+STARTING_OFFSET);
     remove_reliable_packet(user->ack_packets, seq_num);
@@ -768,7 +805,7 @@ void handle_data(int sockfd, struct addrinfo *p, struct Players *players, struct
         int seq_num = extract_seq_num(buf);
         send_ack_confirmation(sockfd, p, user, seq_num);
 
-        if (handle_player_disconnect(players, buf, user) == 0){
+        if (handle_player_disconnect(players, buf, user) == 0){ // self was removed from server
             printf("\nThe server has kicked you.\n");
             handle_shutdown(sockfd, original_settings, p);
         }
@@ -834,6 +871,8 @@ void handle_data(int sockfd, struct addrinfo *p, struct Players *players, struct
  *
  * Main loop: checks for player input (one char at a time, non blocking), calls handle_keypress() if input is found.
  * Loop also checks for incoming data using poll(). If data is ready to be read, calls handle_data()
+ * If in bot mode, enacts bot moves every `next_move` milliseconds
+ * Handles printing the game state
  * 
  * Lastly, upon program shutdown, calls handle_shutdown()
  */
@@ -925,6 +964,8 @@ int main(void)
                     printf("failed to connect to server.\n");
                     handle_shutdown(sockfd, &original_settings, p);
                 }
+                //int c;
+                //while ((c = getchar()) != '\n' && c != EOF);
             }
         }
 
@@ -995,33 +1036,3 @@ int main(void)
 
     handle_shutdown(sockfd, &original_settings, p);
 }
-
-// TODO: add ACK for treasures, connections, player updates, etc.
-/*
- 
- Design:
-
- Need to create a structure for containing ACK'd packets. Must be easy/quick to navigate, remove elements, and each element should have their own attributes
-
- For each reliable packet, I need to track packet data (unsigned char buf[MAXBUFSIZE]), time sent (int ms), retry_count (int), packet byte length, sequence num
-
- When a reliable packet is sent, a reliable packet struct is created and appended to the ack packet list. Every loop, the list is iterated through, checking
- for packets that are timed out. It will resend this packet if a certain threshold is met (probably 1.5x the ping time). If it is re-sent more than 3 or so times
- the packet is just dropped, no more retries.
-
- On the client side, all packets have been sent via send_packet(). This will not cover all cases anymore, thus a new function, send_reliable_packet(), will
- need to be created.
-
- Server side will need to send back ACK's for these packets, APPID + ACKID + SEQNUM - 6bytes. 
-
- Client will search for ACKID packets, confirming when they are received.
-
- Both server and client will need to use reliable packets for important packets. Thus,  this logic should be extracted into a util file.
-
- DLL - O(1) insert, O(n) delete, O(n) search
- SLL - O(1) insert, O(n) delete, O(n) search
-
- Go with SLL?
- 
-
- */

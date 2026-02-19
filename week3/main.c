@@ -26,6 +26,9 @@
  * sockfd -- server socket file descriptor
  * player_id_ct -- incrementing player id count
  * treasure_id_ct -- incrementing treasure id count
+ * ack_seq_ct -- incrementing ack sequence number id count
+ * 
+ * *ack_packets -- a linked list of all ack packets waiting to be confirmed
  * *players -- a linked list of all currently connected players
  * *treasures -- a linked list of all active treasures
  */
@@ -36,17 +39,22 @@ struct State {
     int ack_seq_ct;
 
     struct ReliablePacketSLL *ack_packets;
-    struct Network *network;
     struct Players *players;
     struct Treasures *treasures;
 };
 
+/*
+ * insert_seq_num() -- insert a seq_num into the 4th and 5th bytes of a packet
+ */
 void insert_seq_num(unsigned char packet[MAXBUFSIZE], int *packet_size, int seq_num){
     memmove(packet+6, packet+4, *packet_size - 4);
     packi16(packet+4, seq_num);
     *packet_size += 2;
 }
 
+/*
+ * send_ack_confirmation() -- when a packet from a client needs ACK, send ack with seq_num
+ */
 void send_ack_confirmation(struct State *state, struct Player *player, int seq_num){
     unsigned char ack[MAXBUFSIZE];
     int offset = 0;
@@ -58,7 +66,9 @@ void send_ack_confirmation(struct State *state, struct Player *player, int seq_n
     send_proxy(state->sockfd, ack, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
 }
 
-
+/*
+ * send_ack_packet() -- same functionality as send_packet, but implements ack functionality: inserts ack seq_num and adds to ack struct
+ */
 void send_ack_packet(struct Player *player, unsigned char packet[MAXBUFSIZE], int packet_size, struct State *state){
     struct ReliablePacket *reliable_packet = malloc(sizeof *reliable_packet);
     reliable_packet->next = NULL;
@@ -74,9 +84,16 @@ void send_ack_packet(struct Player *player, unsigned char packet[MAXBUFSIZE], in
     
     add_reliable_packet(state->ack_packets, reliable_packet);
 
+    if (player == NULL){
+        return;
+    }
+
     send_proxy(state->sockfd, reliable_packet->data, reliable_packet->data_len, 0, (struct sockaddr*)&player->addr, player->addrlen);
 }
 
+/*
+ * resend_ack_packet() -- when no ACK is received after a given timeframe, resends the packet and increments retry_ct
+ */
 void resend_ack_packet(struct ReliablePacket *packet, struct State *state){
     if (packet->retry_ct++ >= 10){
         printf("err: failed to send packet of type -%d-\n", unpacki16(packet->data + 2));
@@ -87,9 +104,17 @@ void resend_ack_packet(struct ReliablePacket *packet, struct State *state){
     struct Player *player = get_player_by_id(state->players, packet->client_id);
     packet->time_sent = get_time_ms();
 
+    if (player == NULL){
+        remove_reliable_packet(state->ack_packets, packet->seq_num);
+        return;
+    }
+
     send_proxy(state->sockfd, packet->data, packet->data_len, 0, (struct sockaddr*)&player->addr, player->addrlen);
 }
 
+/*
+ * send_connection_confirmation() -- when a client connects to the server, send confirmation when successful
+ */
 void send_connection_confirmation(struct State *state, struct Player *player){
     unsigned char packet[MAXBUFSIZE];
     int offset = 0;
@@ -98,7 +123,6 @@ void send_connection_confirmation(struct State *state, struct Player *player){
     packi16(packet+offset, CONNECTION_CONFIRMATION); offset += 2;
     
     send_ack_packet(player, packet, offset, state);
-    printf("sent connection\n");
 }
 
 /*
@@ -325,8 +349,6 @@ void handle_command(struct State *state, struct Player *player, unsigned char co
 
 }
 
-
-
 /*
  * send_user_id() -- send a player their user id
  */
@@ -381,6 +403,7 @@ void handle_new_connection(int sockfd, struct sockaddr_in addr, socklen_t addr_l
     }
 
     strncpy(new_player->username, data, len);
+    printf("%s connected.\n", new_player->username);
 
     send_user_update_all(state, new_player); // send new player info to ALL players
     send_all_users_data(state, new_player); // send all current player data to new player
@@ -535,6 +558,9 @@ void handle_latency_check(int sockfd, struct State *state, struct Player *player
     send_proxy(sockfd, packet, offset, 0, (struct sockaddr*)&player->addr, player->addrlen);
 }
 
+/*
+ * check_for_inactivity() -- scan the list of players and disconnect any players that haven't sent packets for over 2 seconds -- arbitrary timeout
+ */
 void check_for_inactivity(int sockfd, struct State *state, struct Players *players){
 
     struct Player *cur = players->head;
@@ -547,6 +573,9 @@ void check_for_inactivity(int sockfd, struct State *state, struct Players *playe
     }
 }
 
+/*
+ * handle_ack_packet() -- clear corresponding pending ack packet from the reliable ack struct
+ */
 void handle_ack_packet(struct State *state, unsigned char buf[MAXBUFSIZE]){
     int seq_num = unpacki16(buf);
     remove_reliable_packet(state->ack_packets, seq_num);
@@ -585,7 +614,6 @@ void handle_data(int sockfd, struct State *state){
             return;
         }
         if (msg_type == CONNECTION_REQUEST){
-            printf("new connection!\n");
             handle_new_connection(sockfd, *their_addr, their_len, data, state);
         }
         return;
@@ -678,10 +706,6 @@ int main(void)
     players->total_players = 0;
     players->head = NULL;
 
-    struct Network *network = malloc(sizeof *network);
-    network->last_tick_sent = 0;
-    network->latency_ms = 0;
-
     struct ReliablePacketSLL *ack_packets = malloc(sizeof *ack_packets);
     ack_packets->count = 0;
     ack_packets->head = NULL;
@@ -694,7 +718,6 @@ int main(void)
     state->treasures = treasures;
     state->players = players;
     state->sockfd = sockfd;
-    state->network = network;
     state->ack_packets = ack_packets;
     
     create_initial_treasures(state);

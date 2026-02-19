@@ -1,6 +1,5 @@
 #include "./reliable_packet.h"
 
-
 void add_reliable_packet(struct ReliablePacketSLL *packets, struct ReliablePacket *packet){
     if (packets->count == 0){
         packets->head = packets->tail = packet;
