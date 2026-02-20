@@ -76,7 +76,7 @@ The goal isn't just to learn networking concepts—it's to build the discipline 
   - Checkerboard viewport rendering for visual movement feedback
 - *Lessons: Always guard NULL pointers. stdout buffering hides debug output during segfaults—use stderr or fflush(stdout).*
 
-**Week 7: UDP Proxy & Network Simulator**
+**Week 7: UDP Proxy & Network Simulator (Complete)**
 - Built transparent UDP proxy to simulate real-world network conditions
 - **Challenge:** Preserving destination addresses in connectionless UDP routing
 - **Solution:** Wrapper functions (send_proxy/rec_proxy) that embed routing info in packet data
@@ -89,10 +89,36 @@ The goal isn't just to learn networking concepts—it's to build the discipline 
 - **Testing insights:**
   - 50ms latency made treasure hunt feel sluggish
   - 100ms+ latency became unplayable without client prediction
-  - Packet loss broke game state synchronization
+  - Packet loss broke game state synchronization completely
   - Critical events (connections, treasure collection) need reliability
+  - Players disconnecting without server detection
 - Implemented two versions: v1 (proof of concept) and v2 (production-ready with stats)
-- *Lesson: Network conditions expose architectural weaknesses. Client prediction and state reconciliation aren't optional—they're fundamental.*
+- *Lesson: Network conditions expose architectural weaknesses. The proxy reveals problems that need solving.*
+
+**Week 8: Reliability Systems & Client Prediction (In Progress, Day 39/40)**
+- Implemented selective reliability on top of UDP for critical game events
+- **Reliable packet framework:**
+  - ACK/retransmission system with sequence number tracking
+  - Linked list structure for managing unacknowledged packets
+  - Timeout-based retry logic (configurable attempts)
+  - See `utils/reliable_packet.c` for implementation
+- **Connection handshake:**
+  - Three-way handshake: CONNECTION_REQUEST → CONNECTION_CONFIRMATION → ACK
+  - Prevents ghost players from failed connections
+  - Server only adds players after confirming they received their ID
+- **Client-side prediction:**
+  - Client validates and applies movement locally before sending to server
+  - Instant response to player input (no waiting for server confirmation)
+  - Server can send position corrections when client state diverges
+  - Reconciliation handles server overrides gracefully
+- **Network diagnostics:**
+  - Round-trip latency measurement using LATENCY_CHECK packets
+  - Per-client latency tracking displayed in game UI
+- **Server validation:**
+  - Position correction packets when client state diverges
+  - Essential for detecting cheating or resolving sync issues
+  - Timeout-based disconnection detection (removes inactive players)
+- *Lesson: UDP isn't "unreliable networking". It's a blank canvas where you choose what to make reliable. Position updates can be lossy; connection requests must be guaranteed. Client prediction makes the game feel responsive even with 100ms+ latency. The trick is graceful reconciliation when predictions are wrong.*
 
 ---
 
@@ -157,6 +183,12 @@ Every multiplayer game, real-time collaboration tool, and distributed system fac
 - Network condition simulation (latency, packet loss)
 - Transparent proxy design for UDP routing
 - Wrapper functions for protocol abstraction
+- Selective reliability on UDP (ACK/retransmission for critical events)
+- Connection handshake protocols (three-way handshake over UDP)
+- Round-trip latency measurement and tracking
+- Timeout-based connection management
+- Client-side prediction with server reconciliation
+- Position correction for divergent client state
 
 ---
 
@@ -201,18 +233,20 @@ Read for understanding, then build from scratch. No copy-paste. If I don't under
 
 ## Progress Tracking
 
-**Days completed:** 33/120 (Month 2, Week 7)
+**Days completed:** 39/120 (Month 2, Week 8 - Day 39/40)
 
-**Current streak:** 33 days
+**Current streak:** 39 days
 
-**Projects shipped:** 5
+**Projects shipped:** 7
 - TCP Chat Server (Week 4)
 - Multiplayer Movement Server (Week 5)
 - Treasure Hunt Game (Week 6)
 - UDP Proxy v1 (Week 7)
 - UDP Proxy v2 with Statistics (Week 7)
+- Reliable Packet System (Week 8)
+- Client-Side Prediction (Week 8)
 
-**Lines of code written:** ~3,500+ (not counting iterations and rewrites)
+**Lines of code written:** ~4,000+ (not counting iterations and rewrites)
 
 ---
 
@@ -228,21 +262,21 @@ The consistency compounds.
 
 ---
 
-**Last updated:** February 11, 2026 (Month 2, Week 7)
+**Last updated:** February 19, 2026 (Month 2, Week 8, Day 39/40)
 
-**Next challenge:** Making the game feel responsive even with bad network conditions.
+**Next challenge:** Planning Week 9 and beyond. Entity interpolation for remote players, improved retransmission logic, and historical state tracking for better server reconciliation.
 
 ---
 
 ## What's Next
 
-**Week 8 (Planned):** Client prediction and interpolation
-- Implement client-side prediction for player movement
-- Server reconciliation when predictions diverge
+**Week 9 (Planned):** Advanced prediction & interpolation
 - Entity interpolation for smooth remote player movement
-- Make the treasure hunt playable with 100ms+ latency
+- Enhanced retransmission logic (exponential backoff)
+- Historical game state tracking for better server reconciliation
+- Reliable treasure collection packets
 
-**Week 9 (Planned):** Lag compensation
+**Week 10 (Planned):** Lag compensation
 - Server-side rewind for hit detection
 - Client-server time synchronization
 - Input buffering and replay
