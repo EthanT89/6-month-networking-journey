@@ -20,4 +20,6 @@ int job_echo(unsigned char result[MAXRESULTSIZE], unsigned char content[MAXBUFSI
 
 int job_capitalize(unsigned char result[MAXRESULTSIZE], unsigned char content[MAXBUFSIZE]);
 
+int process_job(unsigned char result[MAXRESULTSIZE], unsigned char content[MAXBUFSIZE]);
+
 #endif

@@ -106,18 +106,32 @@ void handle_job_failure(struct Self *self){
     send(self->servfd, update, offset, 0);
 }
 
+void handle_job_success(struct Self *self, unsigned char buf[MAXRESULTSIZE]){
+    self->status = W_SUCCESS;
+    unsigned char update[MAXBUFSIZE];
+    int offset = 0;
+
+    packi16(update+offset, APPID); offset += 2;
+    packi16(update+offset, WPACKET_RESULTS); offset += 2;
+    strncpy(update+offset, buf, MAXBUFSIZE-offset); offset += strlen(buf);
+
+    send(self->servfd, update, offset, 0);
+}
+
 void handle_job_assignment(struct Self *self, unsigned char buf[MAXBUFSIZE]){
     self->status = W_BUSY;
+    unsigned char result[MAXRESULTSIZE];
 
-    int job_type = determine_job_type(buf, strlen(buf));
-    if (job_type == -1){
-        printf("unknown job type\n");
+    int rv = process_job(result, buf);
+    if (rv == -1){
         handle_job_failure(self);
         self->status = W_READY;
         return;
     }
-    printf("job type: %d\n", job_type);
 
+    self->jobs_completed++;
+    handle_job_success(self, result);
+    self->status = W_READY;
 }
 
 void handle_status_update(struct Self *self){
@@ -143,7 +157,6 @@ void handle_server_data(struct Self *self, unsigned char buf[MAXBUFSIZE]){
     if (packetid == WPACKET_NEWJOB){
         printf("received new job.\n");
         int jobid = unpacki16(buf+offset); offset += 2;
-        printf("job metadata: %s - len %ld\n", buf+offset, strlen(buf+offset));
         handle_job_assignment(self, buf+offset);
     }
 
@@ -188,7 +201,7 @@ int main(){
                 }
 
                 unsigned char buffer[MAXBUFSIZE];
-                memset(buffer, 0, sizeof *buffer);
+                memset(buffer, 0, sizeof buffer);
 
                 read(fd, buffer, MAXBUFSIZE);
                 handle_server_data(self, buffer);

@@ -11,6 +11,9 @@ int determine_job_type(unsigned char buf[MAXBUFSIZE], int size){
     }
 
     strncpy(keyword, buf, i);
+    keyword[i] = '\0';
+
+    memmove(buf, buf+i, MAXBUFSIZE-i);
 
     if (strlen(keyword) == 0){
         printf("no keyword...\n");
@@ -57,3 +60,26 @@ int job_capitalize(unsigned char result[MAXRESULTSIZE], unsigned char content[MA
 
     strncpy(result, content, MAXRESULTSIZE);
 }
+
+int process_job(unsigned char result[MAXRESULTSIZE], unsigned char content[MAXBUFSIZE]){
+    int job_type = determine_job_type(content, strlen(content));
+
+    if (job_type == -1){
+        return job_type;
+    }
+
+    if (job_type == JTYPE_WORDCOUNT){
+        return job_wordcount(result, content);
+    }
+
+    if (job_type == JTYPE_ECHO){
+        return job_echo(result, content);
+    }
+
+    if (job_type == JTYPE_CAPITALIZE){
+        return job_capitalize(result, content);
+    }
+
+    return 1;
+}
+

@@ -208,6 +208,15 @@ void handle_worker_data(struct Server *server, int worker_fd){
         worker->status = status;
     }
 
+    if (msg_type == WPACKET_RESULTS){
+        worker->status = W_READY;
+        struct Job *job = get_job_by_id(server->jobs, worker->cur_job_id);
+        strcpy(job->results, buf+offset);
+        job->status = J_SUCCESS;
+        worker->cur_job_id = -1;
+        worker->jobs_completed++;
+    }
+
     printf("%s\n", buf);
 }
 
