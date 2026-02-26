@@ -10,6 +10,7 @@ struct Worker *create_empty_worker(){
     worker->jobs_completed = 0;
     worker->next = NULL;
     worker->status = W_READY;
+    worker->cur_job_id = -1;
 
     return worker;
 }

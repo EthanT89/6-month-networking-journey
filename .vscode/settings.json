@@ -2,5 +2,28 @@
     "C_Cpp.errorSquiggles": "disabled",
     "chat.tools.terminal.autoApprove": {
         "gcc": true
-    }
+    },
+    "files.exclude": {
+        "**/.gitignore": true,
+        "**/.git": true
+    },
+    "files.watcherExclude": {
+        "**/.gitignore": true,
+        "**/.git": true,
+        "**/*.md": true
+    },
+    "C_Cpp.exclusionPolicy": "checkFilesAndFolders",
+    "C_Cpp.files.exclude": {
+        "**/.gitignore": true,
+        "**/.git": true,
+        "**/*.md": true
+    },
+    "search.exclude": {
+        ".gitignore": true,
+        "**/.git": true,
+        "**/*.md": true,
+        "**/README.md": true
+    },
+    "C_Cpp.intelliSenseEngine": "default",
+    "C_Cpp.autoAddFileAssociations": false
 }

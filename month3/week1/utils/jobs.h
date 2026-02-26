@@ -8,6 +8,9 @@
 // imports
 #include "../common.h"
 
+#include <stddef.h>
+#include <stdlib.h>
+
 /*
  * Job -- struct for containing Job data
  *

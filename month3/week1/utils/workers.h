@@ -7,6 +7,9 @@
 
 #include "../common.h"
 
+#include <stddef.h>
+#include <stdlib.h>
+
 /*
  * Worker -- struct for server managment of workers
  *
@@ -18,6 +21,7 @@ struct Worker {
     int id;
     int status;
     int jobs_completed;
+    int cur_job_id;
 
     struct Worker *next;
 };

@@ -11,7 +11,7 @@ struct Job *create_blank_job(){
     struct Job *job = malloc(sizeof *job);
     job->job_id = -1;
     job->job_type = -1;
-    job->status = -1;
+    job->status = J_IN_QUEUE;
     job->next = NULL;
     job->time_start = -1;
     job->worker_id = -1;
@@ -48,18 +48,18 @@ void remove_job(struct Jobs *jobs, int job_id){
         return;
     }
 
-    struct Worker *res = jobs->head;
-    struct Worker *prev = NULL;
+    struct Job *res = jobs->head;
+    struct Job *prev = NULL;
 
     if (jobs->count == 1){
-        if (jobs->head->id != job_id) return;
+        if (jobs->head->job_id != job_id) return;
         free(jobs->head);
         jobs->head = jobs->tail = NULL;
         jobs->count--;
         return;
     }
 
-    for (res; res != NULL && res->id != job_id; res = res->next){
+    for (res; res != NULL && res->job_id != job_id; res = res->next){
         prev = res;
     }
 
@@ -100,7 +100,7 @@ int get_job_status(struct Jobs *jobs, int job_id){
             if (cur->job_id == job_id) return cur->status;
         }
     }
-    return NULL;
+    return -1;
 }
 
 /*

@@ -15,14 +15,23 @@
 
 // Custom imports
 #include "./utils/jobs.h"
+#include "./utils/buffer_manipulation.h"
+#include "./utils/time_custom.h"
+#include "./utils/workers.h"
 #include "./common.h"
 
 /*
  * Server -- custom struct containing tasks, workers, sockets, and other real-time data
  */
 struct Server {
+    int epoll_fd;
     int worker_listener; // socket listening for worker connections
     int client_listener; // socket listening for client connections
+
+    int job_id_ct;
+
+    struct Jobs *jobs;
+    struct Workers *workers;
 };
 
 /*
@@ -88,22 +97,307 @@ void add_epoll_fd(int epoll_fd, int new_fd){
     }
 }
 
-int main(){
-    int client_fd = get_listening_socket(CLIENT_PORT);
-    int worker_fd = get_listening_socket(WORKER_PORT);
+int assign_to_worker(struct Server *server, unsigned char job_packet[MAXBUFSIZE], int offset, int job_id){
+    struct Worker *worker = get_available_worker(server->workers);
 
+    if (worker == NULL){
+        return -1;
+    }
+
+    printf("assigning to worker %d\n", worker->id);
+    send(worker->id, job_packet, offset, 0);
+    worker->cur_job_id = job_id;
+    worker->status = W_BUSY;
+    return worker->id;
+}
+
+void get_status_msg(unsigned char msg[MAXBUFSIZE], int status_id){
+    if (status_id == J_IN_QUEUE){
+        sprintf(msg, "Job in queue.");
+        return;
+    }
+    if (status_id == J_IN_PROGRESS){
+        sprintf(msg, "Job in progress.");
+        return;
+    }
+    if (status_id == J_SUCCESS){
+        sprintf(msg, "Job complete. see 'results' for more info.");
+        return;
+    }
+    if (status_id == J_FAILURE){
+        sprintf(msg, "Job failed.");
+        return;
+    }
+
+    if (status_id == -1){
+        sprintf(msg, "Job not found.");
+        return;
+    }
+}
+
+void handle_job_submission(struct Server *server, unsigned char metadata[MAXJOBMETADATASIZE], unsigned char return_msg[MAXBUFSIZE]){
+    struct Job *job = create_blank_job();
+    job->job_id = server->job_id_ct++;
+    job->job_type = 0; // TODO: determine job types
+    job->time_start = get_time_ms();
+    strncpy(job->results, metadata, MAXRESULTSIZE);
+
+    add_job(server->jobs, job);
+    sprintf(return_msg, "Job ID: %d\n", job->job_id);
+
+    unsigned char job_packet[MAXBUFSIZE];
+    int offset = 0;
+    packi16(job_packet+offset, APPID); offset += 2;
+    packi16(job_packet+offset, WPACKET_NEWJOB); offset += 2;
+    packi16(job_packet+offset, job->job_id); offset += 2;
+    memcpy(job_packet+offset, metadata, MAXJOBMETADATASIZE); offset += strlen(metadata);
+
+    int worker_id = assign_to_worker(server, job_packet, offset, job->job_id);
+    if (worker_id == -1){
+        printf("no available workers. discarding (for now)\n");
+        return;
+    }
+
+    job->status = J_IN_PROGRESS;
+    job->worker_id = worker_id;
+}
+
+void handle_job_status(struct Server *server, unsigned char metadata[MAXJOBMETADATASIZE], unsigned char return_msg[MAXBUFSIZE]){
+    int job_id = atoi(metadata);
+    int status = get_job_status(server->jobs, job_id);
+    get_status_msg(return_msg, status);
+}
+
+void handle_job_get_results(struct Server *server, unsigned char metadata[MAXJOBMETADATASIZE], unsigned char return_msg[MAXBUFSIZE]){
+    int job_id = atoi(metadata);
+    int status = get_job_status(server->jobs, job_id);
+    struct Job *job = get_job_by_id(server->jobs, job_id);
+    if (status == J_SUCCESS || status == J_IN_QUEUE){
+        strncpy(return_msg, job->results, MAXBUFSIZE);
+    } else {
+        printf("job not found or incomplete: %d\n", status);
+        get_status_msg(return_msg, status);
+    }
+}
+
+void handle_worker_data(struct Server *server, int worker_fd){
+    int rv;
+    unsigned char buf[MAXBUFSIZE];
+    memset(buf, 0, MAXBUFSIZE);
+
+    rv = read(worker_fd, buf, MAXBUFSIZE);
+    if (rv == 0){
+        printf("Worker %d disconnected.\n", worker_fd);
+        close(worker_fd);
+        remove_worker(server->workers, worker_fd);
+    }
+
+    int offset = 0;
+    int appid = unpacki16(buf+offset); offset += 2;
+    int msg_type = unpacki16(buf+offset); offset += 2;
+
+    if (appid != APPID){
+        return;
+    }
+
+    struct Worker *worker = get_worker_by_id(server->workers, worker_fd);
+
+    if (msg_type == WPACKET_STATUS){
+        int status = unpacki16(buf+offset); offset += 2;
+        printf("worker %d status - %d\n", worker_fd, status);
+        worker->status = status;
+    }
+
+    printf("%s\n", buf);
+}
+
+void manage_worker(struct Server *server, struct Worker *worker){
+    if (worker->status == W_FAILURE){
+        struct Job *job = get_job_by_id(server->jobs, worker->cur_job_id);
+        if (job == NULL) return;
+        job->status = J_FAILURE;
+        worker->cur_job_id = -1;
+        worker->status = W_READY;
+        return;
+    }
+
+    if (worker->status == W_SUCCESS){
+        struct Job *job = get_job_by_id(server->jobs, worker->cur_job_id);
+        if (job == NULL) return;
+        job->status = J_SUCCESS;
+        worker->cur_job_id = -1;
+        worker->status = W_READY;
+        worker->jobs_completed++;
+        return;
+    }
+}
+
+void manage_worker_statuses(struct Server *server){
+    struct Worker *worker = server->workers->head;
+
+    for (worker; worker != NULL; worker = worker->next){
+        if (worker->status != W_READY && worker->status != W_BUSY){
+            manage_worker(server, worker);
+        }
+    }
+}
+
+void handle_client_request(struct Server *server){
+    printf("\nClient request!\n");
+
+    struct sockaddr_storage *their_addr = malloc(sizeof *their_addr);
+    unsigned char buf[MAXBUFSIZE];
+    memset(buf, 0, MAXBUFSIZE);
+    socklen_t len_t = sizeof *their_addr;
+
+    unsigned char metadata[MAXJOBMETADATASIZE];
+    unsigned char return_msg[MAXBUFSIZE];
+    int app_id;
+    int cmd_type;
+    int offset = 0;
+
+    int new_fd = accept(server->client_listener, (struct sockaddr*)their_addr,  &len_t);
+    recv(new_fd, buf, MAXBUFSIZE, 0);
+
+    app_id = unpacki16(buf+offset); offset += 2;
+    cmd_type = unpacki16(buf+offset); offset += 2;
+    memcpy(metadata, buf+offset, MAXJOBMETADATASIZE);
+
+    if (app_id != APPID){
+        printf("incorrect app id: %d - %d\n", app_id, cmd_type);
+        return;
+    }
+
+    printf("job type id: %d, metadata: %s\n", cmd_type, metadata);
+
+    if (cmd_type == JOBSUBMITID){
+        handle_job_submission(server, metadata, return_msg);
+    }
+
+    if (cmd_type == JOBSTATUSID){
+        handle_job_status(server, metadata, return_msg);
+    }
+
+    if (cmd_type == JOBRESULTID){
+        handle_job_get_results(server, metadata, return_msg);
+    }
+
+    send(new_fd, return_msg, strlen(return_msg), 0);
+    close(new_fd);
+
+    printf("\n");
+}
+
+void handle_new_worker(struct Server *server){
+    printf("New worker.\n");
+
+    struct sockaddr_storage *their_addr = malloc(sizeof *their_addr);
+    socklen_t their_len = sizeof *their_addr;
+
+    int new_fd = accept(server->worker_listener, (struct sockaddr*)their_addr, &their_len);
+    if (new_fd == -1){
+        return;
+    }
+    add_epoll_fd(server->epoll_fd, new_fd);
+
+    struct Worker *new_worker = create_empty_worker();
+    new_worker->id = new_fd;
+    add_worker(server->workers, new_worker);
+
+    unsigned char buf[MAXBUFSIZE];
+    int offset = 0;
+    packi16(buf+offset, APPID); offset += 2;
+    packi16(buf+offset, WPACKET_CONNECTED); offset += 2;
+    packi16(buf+offset, new_worker->id); offset += 2;
+
+    send(new_fd, buf, offset, 0);
+}
+
+/*
+ * create_epoll() -- create an epoll instance and return it's file descriptor
+ */
+int create_epoll(){
     int epoll_fd = epoll_create1(0);
     if (epoll_fd == -1) {
         perror("epoll_create1");
         exit(EXIT_FAILURE);
     }
+    return epoll_fd;
+}
 
-    add_epoll_fd(epoll_fd, 0);
-    add_epoll_fd(epoll_fd, client_fd);
-    add_epoll_fd(epoll_fd, worker_fd);
+/*
+ * handle_input() -- handle server-side stdin input
+ */
+int handle_input(int stdin_fd){
+    char buffer[100];
+    ssize_t bytes_read = read(stdin_fd, buffer, 100 - 1);
+    if (bytes_read > 0) {
+        buffer[bytes_read] = '\0';
+        printf("Input: %s", buffer);
+
+        if (strncmp(buffer, "quit", 4) == 0){
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+/*
+ * setup_server_struct() -- create the base Server struct with the appropriate file descriptors, returns pointer to said struct
+ */
+struct Server *setup_server_struct(int cfd, int wfd, int pfd){
+    struct Server *server = malloc(sizeof *server);
+    server->client_listener = cfd;
+    server->worker_listener = wfd;
+    server->epoll_fd = pfd;
+    server->job_id_ct = 0;
+
+    struct Jobs *jobs = malloc(sizeof *jobs);
+    jobs->count = 0;
+    jobs->head = NULL;
+    jobs->tail = NULL;
+
+    struct Workers *workers = malloc(sizeof *workers);
+    workers->available_workers = 0;
+    workers->count = 0;
+    workers->head = NULL;
+    workers->tail = NULL;
+
+    server->jobs = jobs;
+    server->workers = workers;
+
+    add_epoll_fd(pfd, 0);
+    add_epoll_fd(pfd, cfd);
+    add_epoll_fd(pfd, wfd);
+
+    return server;
+}
+
+/*
+ * handle_shutdown() -- safely shut down the server
+ */
+void handle_shutdown(struct Server *server){
+    printf("\nshutting down...\n");
+    close(server->client_listener);
+    close(server->worker_listener);
+    close(server->epoll_fd);
+    exit(EXIT_SUCCESS);
+    printf("goodbye.\n");
+}
+
+int main(){
+    printf("starting server...\n");
+    int client_fd = get_listening_socket(CLIENT_PORT);
+    int worker_fd = get_listening_socket(WORKER_PORT);
+    int epoll_fd = create_epoll();
+
+    struct Server *server = setup_server_struct(client_fd, worker_fd, epoll_fd);
 
     // Event loop
     struct epoll_event events[MAXEPOLLEVENTS];
+
+    printf("server setup complete. waiting for connections...\n\n");
     while (1) {
         int nfds = epoll_wait(epoll_fd, events, MAXEPOLLEVENTS, -1);
         if (nfds == -1) {
@@ -113,19 +407,27 @@ int main(){
 
         for (int i = 0; i < nfds; i++) {
             if (events[i].events & EPOLLIN) {
-                char buffer[100];
-                ssize_t bytes_read = read(events[i].data.fd, buffer, 100 - 1);
-                if (bytes_read > 0) {
-                    buffer[bytes_read] = '\0';
-                    printf("Received: %s", buffer);
+                int fd = events[i].data.fd;
+                if (fd == 0){
+                    if (handle_input(fd) == -1) handle_shutdown(server);
+                    continue;
                 }
+                if (fd == client_fd){
+                    handle_client_request(server);
+                    continue;
+                }
+                if (fd == worker_fd){
+                    handle_new_worker(server);
+                    continue;
+                }
+
+                handle_worker_data(server, fd);
+
             }
         }
+
+        manage_worker_statuses(server);
     }
 
-    close(epoll_fd);
-    close(client_fd);
-    close(worker_fd);
-
-    return EXIT_SUCCESS;
+    handle_shutdown(server);
 }
