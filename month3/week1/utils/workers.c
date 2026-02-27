@@ -11,6 +11,7 @@ struct Worker *create_empty_worker(){
     worker->next = NULL;
     worker->status = W_READY;
     worker->cur_job_id = -1;
+    worker->errcode = 1;
 
     return worker;
 }

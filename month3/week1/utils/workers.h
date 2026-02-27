@@ -22,6 +22,7 @@ struct Worker {
     int status;
     int jobs_completed;
     int cur_job_id;
+    int errcode;
     unsigned char cur_job_results[MAXRESULTSIZE];
 
     struct Worker *next;
