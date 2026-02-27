@@ -27,6 +27,7 @@ struct Job {
     int job_id;
     int worker_id;
 
+    int retry_ct;
     int status;
     unsigned char results[MAXRESULTSIZE];
     int time_start;

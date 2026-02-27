@@ -11,6 +11,7 @@ struct Job *create_blank_job(){
     struct Job *job = malloc(sizeof *job);
     job->job_id = -1;
     job->job_type = -1;
+    job->retry_ct = 0;
     job->status = J_IN_QUEUE;
     job->next = NULL;
     job->time_start = -1;
