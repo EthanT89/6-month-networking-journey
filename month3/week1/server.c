@@ -18,6 +18,7 @@
 #include "./utils/buffer_manipulation.h"
 #include "./utils/time_custom.h"
 #include "./utils/workers.h"
+#include "./utils/job_queue.h"
 #include "./common.h"
 
 /*
@@ -30,6 +31,7 @@ struct Server {
 
     int job_id_ct;
 
+    struct JobQueue *queue;
     struct Jobs *jobs;
     struct Workers *workers;
 };
@@ -97,12 +99,19 @@ void add_epoll_fd(int epoll_fd, int new_fd){
     }
 }
 
-int assign_to_worker(struct Server *server, unsigned char job_packet[MAXBUFSIZE], int offset, int job_id){
+int assign_to_worker(struct Server *server, unsigned char metadata[MAXJOBMETADATASIZE], int job_id){
     struct Worker *worker = get_available_worker(server->workers);
 
     if (worker == NULL){
         return -1;
     }
+
+    unsigned char job_packet[MAXBUFSIZE];
+    int offset = 0;
+    packi16(job_packet+offset, APPID); offset += 2;
+    packi16(job_packet+offset, WPACKET_NEWJOB); offset += 2;
+    packi16(job_packet+offset, job_id); offset += 2;
+    memcpy(job_packet+offset, metadata, MAXJOBMETADATASIZE); offset += strlen(metadata);
 
     printf("assigning to worker %d\n", worker->id);
     send(worker->id, job_packet, offset, 0);
@@ -111,13 +120,16 @@ int assign_to_worker(struct Server *server, unsigned char job_packet[MAXBUFSIZE]
     return worker->id;
 }
 
-void get_status_msg(unsigned char msg[MAXBUFSIZE], int status_id){
+void get_status_msg(unsigned char msg[MAXBUFSIZE], struct Server *server, int job_id){
+    struct Job *job = get_job_by_id(server->jobs, job_id);
+    int status_id = job->status;
+
     if (status_id == J_IN_QUEUE){
         sprintf(msg, "Job in queue.");
         return;
     }
     if (status_id == J_IN_PROGRESS){
-        sprintf(msg, "Job in progress.");
+        sprintf(msg, "Job in progress. Worker: %d", job->worker_id);
         return;
     }
     if (status_id == J_SUCCESS){
@@ -143,29 +155,28 @@ void handle_job_submission(struct Server *server, unsigned char metadata[MAXJOBM
     strncpy(job->results, metadata, MAXRESULTSIZE);
 
     add_job(server->jobs, job);
+    add_to_queue(server->queue, job->job_id);
     sprintf(return_msg, "Job ID: %d\n", job->job_id);
+}
 
-    unsigned char job_packet[MAXBUFSIZE];
-    int offset = 0;
-    packi16(job_packet+offset, APPID); offset += 2;
-    packi16(job_packet+offset, WPACKET_NEWJOB); offset += 2;
-    packi16(job_packet+offset, job->job_id); offset += 2;
-    memcpy(job_packet+offset, metadata, MAXJOBMETADATASIZE); offset += strlen(metadata);
+void check_queue(struct Server *server){
+    struct Worker *worker = get_available_worker(server->workers);
+    if (worker == NULL) return;
 
-    int worker_id = assign_to_worker(server, job_packet, offset, job->job_id);
-    if (worker_id == -1){
-        printf("no available workers. discarding (for now)\n");
-        return;
-    }
+    int job_id = pop_queue(server->queue);
+    if (job_id == -1) return;
 
+    struct Job *job = get_job_by_id(server->jobs, job_id);
+    if (job == NULL) return;
+
+    int rv = assign_to_worker(server, job->results, job_id);
+    job->worker_id = rv;
     job->status = J_IN_PROGRESS;
-    job->worker_id = worker_id;
 }
 
 void handle_job_status(struct Server *server, unsigned char metadata[MAXJOBMETADATASIZE], unsigned char return_msg[MAXBUFSIZE]){
     int job_id = atoi(metadata);
-    int status = get_job_status(server->jobs, job_id);
-    get_status_msg(return_msg, status);
+    get_status_msg(return_msg, server, job_id);
 }
 
 void handle_job_get_results(struct Server *server, unsigned char metadata[MAXJOBMETADATASIZE], unsigned char return_msg[MAXBUFSIZE]){
@@ -176,8 +187,38 @@ void handle_job_get_results(struct Server *server, unsigned char metadata[MAXJOB
         strncpy(return_msg, job->results, MAXBUFSIZE);
     } else {
         printf("job not found or incomplete: %d\n", status);
-        get_status_msg(return_msg, status);
+        get_status_msg(return_msg, server, job_id);
     }
+}
+
+void fail_job(struct Job *job){
+    job->status = J_FAILURE;
+    strcpy(job->results, "job failed.");
+}
+
+void retry_job(struct Server *server, struct Job *job){
+    if (job->retry_ct++ >= 3){
+        fail_job(job);
+    }
+
+    add_to_queue(server->queue, job->job_id);
+    job->status = J_IN_QUEUE;
+    job->worker_id = -1;
+}
+
+void handle_worker_disconnection(struct Server *server, int worker_fd){
+    printf("Worker %d disconnected.\n", worker_fd);
+    close(worker_fd);
+
+    struct Worker *worker = get_worker_by_id(server->workers, worker_fd);
+
+    if (worker->cur_job_id >= 0){
+        struct Job *job = get_job_by_id(server->jobs, worker->cur_job_id);
+        if (job != NULL){
+            retry_job(server, job);
+        }
+    }
+    remove_worker(server->workers, worker_fd);
 }
 
 void handle_worker_data(struct Server *server, int worker_fd){
@@ -187,9 +228,7 @@ void handle_worker_data(struct Server *server, int worker_fd){
 
     rv = read(worker_fd, buf, MAXBUFSIZE);
     if (rv == 0){
-        printf("Worker %d disconnected.\n", worker_fd);
-        close(worker_fd);
-        remove_worker(server->workers, worker_fd);
+        handle_worker_disconnection(server, worker_fd);
     }
 
     int offset = 0;
@@ -204,7 +243,9 @@ void handle_worker_data(struct Server *server, int worker_fd){
 
     if (msg_type == WPACKET_STATUS){
         int status = unpacki16(buf+offset); offset += 2;
-        printf("worker %d status - %d\n", worker_fd, status);
+        int errcode = unpacki16(buf+offset); offset += 2;
+        printf("worker %d status: -%d- | err -%d-\n", worker_fd, status, errcode);
+        worker->errcode = errcode;
         worker->status = status;
     }
 
@@ -224,7 +265,12 @@ void manage_worker(struct Server *server, struct Worker *worker){
     if (worker->status == W_FAILURE){
         struct Job *job = get_job_by_id(server->jobs, worker->cur_job_id);
         if (job == NULL) return;
-        job->status = J_FAILURE;
+
+        if (worker->errcode == WERR_INVALIDJOB){
+            fail_job(job);
+        } else {
+            retry_job(server, job);
+        }
         worker->cur_job_id = -1;
         worker->status = W_READY;
         return;
@@ -320,6 +366,7 @@ void handle_new_worker(struct Server *server){
     packi16(buf+offset, new_worker->id); offset += 2;
 
     send(new_fd, buf, offset, 0);
+    printf("finished new worker...\n");
 }
 
 /*
@@ -375,6 +422,7 @@ struct Server *setup_server_struct(int cfd, int wfd, int pfd){
 
     server->jobs = jobs;
     server->workers = workers;
+    server->queue = create_queue();;
 
     add_epoll_fd(pfd, 0);
     add_epoll_fd(pfd, cfd);
@@ -408,7 +456,7 @@ int main(){
 
     printf("server setup complete. waiting for connections...\n\n");
     while (1) {
-        int nfds = epoll_wait(epoll_fd, events, MAXEPOLLEVENTS, -1);
+        int nfds = epoll_wait(epoll_fd, events, MAXEPOLLEVENTS, 0);
         if (nfds == -1) {
             perror("epoll_wait");
             break;
@@ -435,6 +483,7 @@ int main(){
             }
         }
 
+        check_queue(server);
         manage_worker_statuses(server);
     }
 

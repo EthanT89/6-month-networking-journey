@@ -1,3 +1,7 @@
+/*
+ * job_processing.c -- job handling logic
+ */
+
 #include "./job_processing.h"
 
 int determine_job_type(unsigned char buf[MAXBUFSIZE], int size){
@@ -49,6 +53,7 @@ int job_wordcount(unsigned char result[MAXRESULTSIZE], unsigned char content[MAX
 
 int job_echo(unsigned char result[MAXRESULTSIZE], unsigned char content[MAXBUFSIZE]){
     strncpy(result, content, MAXRESULTSIZE);
+    return 1;
 }
 
 int job_capitalize(unsigned char result[MAXRESULTSIZE], unsigned char content[MAXBUFSIZE]){
@@ -59,13 +64,14 @@ int job_capitalize(unsigned char result[MAXRESULTSIZE], unsigned char content[MA
     }
 
     strncpy(result, content, MAXRESULTSIZE);
+    return 1;
 }
 
 int process_job(unsigned char result[MAXRESULTSIZE], unsigned char content[MAXBUFSIZE]){
     int job_type = determine_job_type(content, strlen(content));
 
     if (job_type == -1){
-        return job_type;
+        return WERR_INVALIDJOB;
     }
 
     if (job_type == JTYPE_WORDCOUNT){
