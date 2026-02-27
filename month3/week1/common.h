@@ -43,6 +43,12 @@
 #define JTYPE_ECHO 2501
 #define JTYPE_CAPITALIZE 2502
 
+// worker error codes
+#define WERR_NONE 1
+#define WERR_UNKNOWN -1
+#define WERR_INVALIDJOB -2
+#define WERR_WORKERQUIT -3
+
 /*
 
 Job creation format:
