@@ -36,6 +36,10 @@ int determine_job_type(unsigned char buf[MAXBUFSIZE], int size){
         return JTYPE_CAPITALIZE;
     }
 
+    if (strcmp(keyword, "charcount") == 0){
+        return JTYPE_CHARCOUNT;
+    }
+
     return -1;
 }
 
@@ -43,11 +47,30 @@ int job_wordcount(unsigned char result[MAXRESULTSIZE], unsigned char content[MAX
     int count = 0;
     int len = strlen(content);
 
+    int seen_word = 0;
+
+    for (int i = 0; i < len; i++){
+        if (content[i] == ' ') seen_word = 0;
+
+        if (content[i] != ' ' && seen_word == 0){
+            seen_word = 1;
+            count++;
+        }
+    }
+
+    sprintf(result, "word count: %d", count);
+    return 1;
+}
+
+int job_charcount(unsigned char result[MAXRESULTSIZE], unsigned char content[MAXBUFSIZE]){
+    int count = 0;
+    int len = strlen(content);
+
     for (int i = 0; i < len; i++){
         if (content[i] != ' ') count++;
     }
 
-    sprintf(result, "word count: %d", count);
+    sprintf(result, "char count: %d", count);
     return 1;
 }
 
@@ -76,6 +99,10 @@ int process_job(unsigned char result[MAXRESULTSIZE], unsigned char content[MAXBU
 
     if (job_type == JTYPE_WORDCOUNT){
         return job_wordcount(result, content);
+    }
+
+    if (job_type == JTYPE_CHARCOUNT){
+        return job_charcount(result, content);
     }
 
     if (job_type == JTYPE_ECHO){

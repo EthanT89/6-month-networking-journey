@@ -106,6 +106,9 @@ int main(int argc, char **argv){
     unsigned char metadata[MAXJOBMETADATASIZE];
     unsigned char full_cmd[MAXBUFSIZE];
     unsigned char response[MAXBUFSIZE];
+    memset(response, 0, MAXBUFSIZE);
+    memset(full_cmd, 0, MAXBUFSIZE);
+    memset(metadata, 0, MAXJOBMETADATASIZE);
     int offset = 0;
 
     int cmd_id = identify_cmd_type(argv[1]);
@@ -128,11 +131,12 @@ int main(int argc, char **argv){
     packi16(full_cmd+offset, cmd_id); offset += 2;
     memcpy(full_cmd+offset, metadata, MAXJOBMETADATASIZE); offset += strlen(metadata);
 
-    send(sockfd, full_cmd, offset, 0);
+    int bytes_sent = send(sockfd, full_cmd, offset, 0);
+    printf("\n%d bytes sent.\n\n", bytes_sent);
 
     recv(sockfd, response, MAXBUFSIZE, 0);
     printf("%s\n", response);
-    memset(response, 0, sizeof *response);
+    memset(response, 0, MAXBUFSIZE);
 
     close(sockfd);
 }

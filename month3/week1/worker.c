@@ -126,7 +126,7 @@ void handle_job_success(struct Self *self, unsigned char buf[MAXRESULTSIZE]){
 void handle_job_assignment(struct Self *self, unsigned char buf[MAXBUFSIZE]){
     self->status = W_BUSY;
     unsigned char result[MAXRESULTSIZE];
-    sleep(10);
+    sleep(5);
 
     int rv = process_job(result, buf);
     if (rv <= -1){

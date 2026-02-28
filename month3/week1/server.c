@@ -21,6 +21,15 @@
 #include "./utils/job_queue.h"
 #include "./common.h"
 
+struct Stats {
+    int jobs_processed;
+    int jobs_failed;
+    int jobs_succeeded;
+    int success_rate;
+    int workers_ct;
+    int jobs_in_queue;
+};
+
 /*
  * Server -- custom struct containing tasks, workers, sockets, and other real-time data
  */
@@ -31,6 +40,7 @@ struct Server {
 
     int job_id_ct;
 
+    struct Stats *stats;
     struct JobQueue *queue;
     struct Jobs *jobs;
     struct Workers *workers;
@@ -113,7 +123,7 @@ int assign_to_worker(struct Server *server, unsigned char metadata[MAXJOBMETADAT
     packi16(job_packet+offset, job_id); offset += 2;
     memcpy(job_packet+offset, metadata, MAXJOBMETADATASIZE); offset += strlen(metadata);
 
-    printf("assigning to worker %d\n", worker->id);
+    printf("assigning job %d to worker %d\n\n", job_id, worker->id);
     send(worker->id, job_packet, offset, 0);
     worker->cur_job_id = job_id;
     worker->status = W_BUSY;
@@ -122,7 +132,11 @@ int assign_to_worker(struct Server *server, unsigned char metadata[MAXJOBMETADAT
 
 void get_status_msg(unsigned char msg[MAXBUFSIZE], struct Server *server, int job_id){
     struct Job *job = get_job_by_id(server->jobs, job_id);
-    int status_id = job->status;
+
+    int status_id = -1;
+    if (job != NULL){
+        status_id = job->status;
+    }
 
     if (status_id == J_IN_QUEUE){
         sprintf(msg, "Job in queue.");
@@ -151,11 +165,11 @@ void handle_job_submission(struct Server *server, unsigned char metadata[MAXJOBM
     struct Job *job = create_blank_job();
     job->job_id = server->job_id_ct++;
     job->job_type = 0; // TODO: determine job types
-    job->time_start = get_time_ms();
     strncpy(job->results, metadata, MAXRESULTSIZE);
 
     add_job(server->jobs, job);
     add_to_queue(server->queue, job->job_id);
+    server->stats->jobs_in_queue++;
     sprintf(return_msg, "Job ID: %d\n", job->job_id);
 }
 
@@ -165,9 +179,11 @@ void check_queue(struct Server *server){
 
     int job_id = pop_queue(server->queue);
     if (job_id == -1) return;
+    server->stats->jobs_in_queue--;
 
     struct Job *job = get_job_by_id(server->jobs, job_id);
     if (job == NULL) return;
+    job->time_start = get_time_ms();
 
     int rv = assign_to_worker(server, job->results, job_id);
     job->worker_id = rv;
@@ -191,14 +207,16 @@ void handle_job_get_results(struct Server *server, unsigned char metadata[MAXJOB
     }
 }
 
-void fail_job(struct Job *job){
+void fail_job(struct Job *job, struct Stats *stats){
     job->status = J_FAILURE;
+    stats->jobs_failed++;
+    stats->jobs_processed++;
     strcpy(job->results, "job failed.");
 }
 
 void retry_job(struct Server *server, struct Job *job){
     if (job->retry_ct++ >= 3){
-        fail_job(job);
+        fail_job(job, server->stats);
     }
 
     add_to_queue(server->queue, job->job_id);
@@ -218,6 +236,7 @@ void handle_worker_disconnection(struct Server *server, int worker_fd){
             retry_job(server, job);
         }
     }
+    server->stats->workers_ct--;
     remove_worker(server->workers, worker_fd);
 }
 
@@ -244,7 +263,7 @@ void handle_worker_data(struct Server *server, int worker_fd){
     if (msg_type == WPACKET_STATUS){
         int status = unpacki16(buf+offset); offset += 2;
         int errcode = unpacki16(buf+offset); offset += 2;
-        printf("worker %d status: -%d- | err -%d-\n", worker_fd, status, errcode);
+        printf("worker %d status: [ %d ] | err [ %d ]\n", worker_fd, status, errcode);
         worker->errcode = errcode;
         worker->status = status;
     }
@@ -254,11 +273,11 @@ void handle_worker_data(struct Server *server, int worker_fd){
         struct Job *job = get_job_by_id(server->jobs, worker->cur_job_id);
         strcpy(job->results, buf+offset);
         job->status = J_SUCCESS;
+        server->stats->jobs_succeeded++;
+        server->stats->jobs_processed++;
         worker->cur_job_id = -1;
         worker->jobs_completed++;
     }
-
-    printf("%s\n", buf);
 }
 
 void manage_worker(struct Server *server, struct Worker *worker){
@@ -267,7 +286,7 @@ void manage_worker(struct Server *server, struct Worker *worker){
         if (job == NULL) return;
 
         if (worker->errcode == WERR_INVALIDJOB){
-            fail_job(job);
+            fail_job(job, server->stats);
         } else {
             retry_job(server, job);
         }
@@ -323,7 +342,7 @@ void handle_client_request(struct Server *server){
         return;
     }
 
-    printf("job type id: %d, metadata: %s\n", cmd_type, metadata);
+    printf("job type id: %d, metadata: %ld bytes\n", cmd_type, strlen(metadata));
 
     if (cmd_type == JOBSUBMITID){
         handle_job_submission(server, metadata, return_msg);
@@ -358,6 +377,7 @@ void handle_new_worker(struct Server *server){
     struct Worker *new_worker = create_empty_worker();
     new_worker->id = new_fd;
     add_worker(server->workers, new_worker);
+    server->stats->workers_ct++;
 
     unsigned char buf[MAXBUFSIZE];
     int offset = 0;
@@ -366,7 +386,6 @@ void handle_new_worker(struct Server *server){
     packi16(buf+offset, new_worker->id); offset += 2;
 
     send(new_fd, buf, offset, 0);
-    printf("finished new worker...\n");
 }
 
 /*
@@ -381,10 +400,27 @@ int create_epoll(){
     return epoll_fd;
 }
 
+void print_stats(struct Stats *stats){
+    if (stats->jobs_processed > 0){
+        stats->success_rate = stats->jobs_succeeded * 100 / stats->jobs_processed;
+    }
+    printf("\n\n===== CURRENT STATS =====\n\n");
+
+    printf("Jobs Processed: %d\n", stats->jobs_processed);
+    printf("Successful Jobs : %d\n", stats->jobs_succeeded);
+    printf("Failed Jobs: %d\n", stats->jobs_failed);
+    printf("Jobs In Queue: %d\n", stats->jobs_in_queue);
+    printf("Success Rate: %d%%\n", stats->success_rate);
+    printf("Active Workers: %d\n", stats->workers_ct);
+
+    printf("\n=========================\n\n");
+
+}
+
 /*
  * handle_input() -- handle server-side stdin input
  */
-int handle_input(int stdin_fd){
+int handle_input(int stdin_fd, struct Server *server){
     char buffer[100];
     ssize_t bytes_read = read(stdin_fd, buffer, 100 - 1);
     if (bytes_read > 0) {
@@ -393,6 +429,10 @@ int handle_input(int stdin_fd){
 
         if (strncmp(buffer, "quit", 4) == 0){
             return -1;
+        }
+
+        if (strncmp(buffer, "stats", 5) == 0){
+            print_stats(server->stats);
         }
     }
 
@@ -414,12 +454,21 @@ struct Server *setup_server_struct(int cfd, int wfd, int pfd){
     jobs->head = NULL;
     jobs->tail = NULL;
 
+    struct Stats *stats = malloc(sizeof *stats);
+    stats->jobs_failed = 0;
+    stats->jobs_processed = 0;
+    stats->jobs_succeeded = 0;
+    stats->success_rate = 0;
+    stats->workers_ct = 0;
+    stats->jobs_in_queue = 0;
+
     struct Workers *workers = malloc(sizeof *workers);
     workers->available_workers = 0;
     workers->count = 0;
     workers->head = NULL;
     workers->tail = NULL;
 
+    server->stats = stats;
     server->jobs = jobs;
     server->workers = workers;
     server->queue = create_queue();;
@@ -466,7 +515,7 @@ int main(){
             if (events[i].events & EPOLLIN) {
                 int fd = events[i].data.fd;
                 if (fd == 0){
-                    if (handle_input(fd) == -1) handle_shutdown(server);
+                    if (handle_input(fd, server) == -1) handle_shutdown(server);
                     continue;
                 }
                 if (fd == client_fd){
