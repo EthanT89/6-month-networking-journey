@@ -1,5 +1,5 @@
 /*
- * client.c -- client request management and facilitation
+ * worker.c -- worker process for receiving and executing jobs from the server
  */
 
 // Main imports
@@ -19,6 +19,15 @@
 #include "./utils/buffer_manipulation.h"
 #include "./utils/job_processing.h"
 
+/*
+ * Self -- worker state struct tracking current status and server connection
+ *
+ * jobs_completed -- total jobs successfully processed
+ * id -- unique worker ID assigned by server
+ * status -- current worker status (W_READY, W_BUSY, W_FAILURE, W_SUCCESS)
+ * errcode -- error code for failed jobs
+ * servfd -- socket file descriptor for server connection
+ */
 struct Self {
     int jobs_completed;
     int id;
@@ -28,6 +37,9 @@ struct Self {
     int servfd;
 };
 
+/*
+ * get_socket() -- create and return a TCP connection to the server's worker port
+ */
 int get_socket(){
     int sockfd, rv;
     int yes = 1;
@@ -71,6 +83,9 @@ int get_socket(){
     return sockfd;
 }
 
+/*
+ * add_epoll_fd() -- register a file descriptor with epoll for event monitoring
+ */
 void add_epoll_fd(int epoll_fd, int new_fd){
     struct epoll_event event;
     event.events = EPOLLIN;
@@ -95,6 +110,9 @@ int create_epoll(){
     return epoll_fd;
 }
 
+/*
+ * handle_job_failure() -- notify server of job failure and send error code
+ */
 void handle_job_failure(struct Self *self){
     printf("job failed.\n");
     self->status = W_FAILURE;
@@ -109,6 +127,9 @@ void handle_job_failure(struct Self *self){
     send(self->servfd, update, offset, 0);
 }
 
+/*
+ * handle_job_success() -- notify server of job completion and send results
+ */
 void handle_job_success(struct Self *self, unsigned char buf[MAXRESULTSIZE]){
     printf("job complete.\n");
     self->errcode = 1;
@@ -123,6 +144,11 @@ void handle_job_success(struct Self *self, unsigned char buf[MAXRESULTSIZE]){
     send(self->servfd, update, offset, 0);
 }
 
+/*
+ * handle_job_assignment() -- process incoming job, execute it, and report results
+ *
+ * Sets status to W_BUSY, processes the job content, reports success/failure to server
+ */
 void handle_job_assignment(struct Self *self, unsigned char buf[MAXBUFSIZE]){
     self->status = W_BUSY;
     unsigned char result[MAXRESULTSIZE];
@@ -143,6 +169,9 @@ void handle_job_assignment(struct Self *self, unsigned char buf[MAXBUFSIZE]){
     self->status = W_READY;
 }
 
+/*
+ * handle_status_update() -- send current worker status to server
+ */
 void handle_status_update(struct Self *self){
     unsigned char update[MAXBUFSIZE];
     int offset = 0;
@@ -155,6 +184,11 @@ void handle_status_update(struct Self *self){
     send(self->servfd, update, offset, 0);
 }
 
+/*
+ * handle_server_data() -- parse and handle incoming packets from server
+ *
+ * Handles WPACKET_NEWJOB (job assignment) and WPACKET_STATUS (status request) packets
+ */
 void handle_server_data(struct Self *self, unsigned char buf[MAXBUFSIZE]){
     int offset = 0;
     int appid = unpacki16(buf+offset); offset += 2;

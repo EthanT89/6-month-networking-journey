@@ -1,4 +1,6 @@
-
+/*
+ * submit_jobs.c -- utility for submitting multiple jobs to the server for load testing
+ */
 
 // Main imports
 #include <string.h>
@@ -17,6 +19,9 @@
 #include "./common.h"
 #include "./utils/buffer_manipulation.h"
 
+/*
+ * get_socket() -- create and return a TCP connection to the server's client port
+ */
 int get_socket(){
     int sockfd, rv;
     int yes = 1;
@@ -60,6 +65,9 @@ int get_socket(){
     return sockfd;
 }
 
+/*
+ * is_all_digits() -- validate that a string contains only numeric digits
+ */
 int is_all_digits(const char *str) {
     if (str == NULL || *str == '\0') return 0; // Handle null or empty string
 
@@ -71,6 +79,12 @@ int is_all_digits(const char *str) {
     return 1; // All characters are digits
 }
 
+/*
+ * main() -- submit N jobs to the server, creating a new connection for each submission
+ *
+ * Each job is a "charcount" task. The server closes connections after responding,
+ * so we reconnect for each job.
+ */
 int main(int argc, char **argv) {
 
     if (argc != 2 || is_all_digits(argv[1]) != 1){

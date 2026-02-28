@@ -4,6 +4,9 @@
 
 #include "./workers.h"
 
+/*
+ * create_empty_worker() -- allocate and initialize a worker struct with default values
+ */
 struct Worker *create_empty_worker(){
     struct Worker *worker = malloc(sizeof *worker);
     worker->id = -1;
@@ -16,6 +19,9 @@ struct Worker *create_empty_worker(){
     return worker;
 }
 
+/*
+ * add_worker() -- add a worker to the workers SLL
+ */
 void add_worker(struct Workers *workers, struct Worker *worker){
     if (worker == NULL){
         return;
@@ -33,6 +39,9 @@ void add_worker(struct Workers *workers, struct Worker *worker){
     return;
 }
 
+/*
+ * remove_worker() -- remove a worker from the SLL by worker_id and free its memory
+ */
 void remove_worker(struct Workers *workers, int worker_id){
     if (workers->count == 0){
         return;
@@ -69,6 +78,9 @@ void remove_worker(struct Workers *workers, int worker_id){
     return;
 }
 
+/*
+ * get_worker_by_id() -- find and return worker with matching worker_id, NULL if not found
+ */
 struct Worker *get_worker_by_id(struct Workers *workers, int worker_id){
     if (workers->count != 0){
         for (struct Worker *cur = workers->head; cur != NULL; cur = cur->next){
@@ -78,6 +90,9 @@ struct Worker *get_worker_by_id(struct Workers *workers, int worker_id){
     return NULL;
 }
 
+/*
+ * get_available_worker() -- find and return first worker with W_READY status, NULL if none available
+ */
 struct Worker *get_available_worker(struct Workers *workers){
     if (workers->count != 0){
         for (struct Worker *cur = workers->head; cur != NULL; cur = cur->next){

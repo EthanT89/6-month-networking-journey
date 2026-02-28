@@ -18,6 +18,9 @@
 #include "./common.h"
 #include "./utils/buffer_manipulation.h"
 
+/*
+ * get_socket() -- create and return a TCP connection to the server's client port
+ */
 int get_socket(){
     int sockfd, rv;
     int yes = 1;
@@ -61,6 +64,11 @@ int get_socket(){
     return sockfd;
 }
 
+/*
+ * identify_cmd_type() -- parse command string and return corresponding packet ID
+ *
+ * Valid commands: 'submit', 'status', 'results'
+ */
 int identify_cmd_type(char *argv){
     if (strlen(argv) == 6 && strncmp(argv, "submit", 6) == 0){
         return JOBSUBMITID;
@@ -76,6 +84,9 @@ int identify_cmd_type(char *argv){
     return -1;
 }
 
+/*
+ * is_all_digits() -- validate that a string contains only numeric digits
+ */
 int is_all_digits(const char *str) {
     if (str == NULL || *str == '\0') return 0; // Handle null or empty string
 
@@ -87,6 +98,11 @@ int is_all_digits(const char *str) {
     return 1; // All characters are digits
 }
 
+/*
+ * validate_cmd_metadata() -- ensure metadata matches expected format for command type
+ *
+ * Submit commands accept any string, status/results require numeric job ID
+ */
 int validate_cmd_metadata(char *argv, int cmd_id){
     if (cmd_id == JOBSUBMITID){
         return 1;

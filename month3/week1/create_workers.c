@@ -1,9 +1,16 @@
+/*
+ * create_workers.c -- utility for spawning multiple worker processes for load testing
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <ctype.h>
 
+/*
+ * is_all_digits() -- validate that a string contains only numeric digits
+ */
 int is_all_digits(const char *str) {
     if (str == NULL || *str == '\0') return 0; // Handle null or empty string
 
@@ -15,6 +22,11 @@ int is_all_digits(const char *str) {
     return 1; // All characters are digits
 }
 
+/*
+ * main() -- fork N worker processes using execl
+ *
+ * Each child process replaces itself with ./worker. Parent waits for all children.
+ */
 int main(int argc, char **argv) {
 
     if (argc != 2 || is_all_digits(argv[1]) != 1){

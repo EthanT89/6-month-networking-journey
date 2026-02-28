@@ -4,6 +4,9 @@
 
 #include "./job_queue.h"
 
+/*
+ * create_jobq() -- create a job queue node with job_id initialized and next set to NULL
+ */
 struct JobQ *create_jobq(int job_id){
     struct JobQ *jobq = malloc(sizeof *jobq);
     jobq->job_id = job_id;
@@ -12,6 +15,9 @@ struct JobQ *create_jobq(int job_id){
     return jobq;
 }
 
+/*
+ * create_queue() -- initialize an empty job queue
+ */
 struct JobQueue *create_queue(){
     struct JobQueue *queue = malloc(sizeof *queue);
     queue->head = NULL;
@@ -21,6 +27,9 @@ struct JobQueue *create_queue(){
     return queue;
 }
 
+/*
+ * add_to_queue() -- append a job to the tail of the queue
+ */
 void add_to_queue(struct JobQueue *queue, int job_id){
     struct JobQ *job = create_jobq(job_id);
 
@@ -35,6 +44,11 @@ void add_to_queue(struct JobQueue *queue, int job_id){
     queue->count++;
 }
 
+/*
+ * pop_queue() -- remove and return the job_id from the head of the queue
+ *
+ * Frees the removed node's memory. Returns -1 if queue is empty.
+ */
 int pop_queue(struct JobQueue *queue){
     if (queue->count <= 0){
         return -1;

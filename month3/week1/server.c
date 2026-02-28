@@ -21,6 +21,16 @@
 #include "./utils/job_queue.h"
 #include "./common.h"
 
+/*
+ * Stats -- real-time server statistics
+ *
+ * jobs_processed -- total jobs that reached completion (success or failure)
+ * jobs_failed -- count of permanently failed jobs
+ * jobs_succeeded -- count of successfully completed jobs
+ * success_rate -- percentage of successful jobs
+ * workers_ct -- current number of connected workers
+ * jobs_in_queue -- current number of jobs waiting for assignment
+ */
 struct Stats {
     int jobs_processed;
     int jobs_failed;
@@ -32,6 +42,15 @@ struct Stats {
 
 /*
  * Server -- custom struct containing tasks, workers, sockets, and other real-time data
+ *
+ * epoll_fd -- epoll instance for event monitoring
+ * worker_listener -- socket listening for worker connections
+ * client_listener -- socket listening for client connections
+ * job_id_ct -- incrementing counter for assigning unique job IDs
+ * *stats -- pointer to server statistics
+ * *queue -- pointer to job queue (FIFO)
+ * *jobs -- pointer to jobs linked list
+ * *workers -- pointer to workers linked list
  */
 struct Server {
     int epoll_fd;
@@ -97,6 +116,9 @@ int get_listening_socket(unsigned char *port){
     return sockfd;
 }
 
+/*
+ * add_epoll_fd() -- register a file descriptor with epoll for read event monitoring
+ */
 void add_epoll_fd(int epoll_fd, int new_fd){
     struct epoll_event event;
     event.events = EPOLLIN;
@@ -109,6 +131,11 @@ void add_epoll_fd(int epoll_fd, int new_fd){
     }
 }
 
+/*
+ * assign_to_worker() -- find available worker and assign job to them
+ *
+ * Sends WPACKET_NEWJOB packet with job_id and metadata. Returns worker ID on success, -1 if no workers available.
+ */
 int assign_to_worker(struct Server *server, unsigned char metadata[MAXJOBMETADATASIZE], int job_id){
     struct Worker *worker = get_available_worker(server->workers);
 
@@ -130,6 +157,9 @@ int assign_to_worker(struct Server *server, unsigned char metadata[MAXJOBMETADAT
     return worker->id;
 }
 
+/*
+ * get_status_msg() -- populate msg buffer with human-readable job status for given job_id
+ */
 void get_status_msg(unsigned char msg[MAXBUFSIZE], struct Server *server, int job_id){
     struct Job *job = get_job_by_id(server->jobs, job_id);
 
@@ -161,6 +191,9 @@ void get_status_msg(unsigned char msg[MAXBUFSIZE], struct Server *server, int jo
     }
 }
 
+/*
+ * handle_job_submission() -- create new job from metadata and add to queue
+ */
 void handle_job_submission(struct Server *server, unsigned char metadata[MAXJOBMETADATASIZE], unsigned char return_msg[MAXBUFSIZE]){
     struct Job *job = create_blank_job();
     job->job_id = server->job_id_ct++;
@@ -173,6 +206,9 @@ void handle_job_submission(struct Server *server, unsigned char metadata[MAXJOBM
     sprintf(return_msg, "Job ID: %d\n", job->job_id);
 }
 
+/*
+ * check_queue() -- if worker available and jobs in queue, pop job and assign to worker
+ */
 void check_queue(struct Server *server){
     struct Worker *worker = get_available_worker(server->workers);
     if (worker == NULL) return;
@@ -190,11 +226,17 @@ void check_queue(struct Server *server){
     job->status = J_IN_PROGRESS;
 }
 
+/*
+ * handle_job_status() -- retrieve and return status message for requested job_id
+ */
 void handle_job_status(struct Server *server, unsigned char metadata[MAXJOBMETADATASIZE], unsigned char return_msg[MAXBUFSIZE]){
     int job_id = atoi(metadata);
     get_status_msg(return_msg, server, job_id);
 }
 
+/*
+ * handle_job_get_results() -- retrieve and return job results for requested job_id
+ */
 void handle_job_get_results(struct Server *server, unsigned char metadata[MAXJOBMETADATASIZE], unsigned char return_msg[MAXBUFSIZE]){
     int job_id = atoi(metadata);
     int status = get_job_status(server->jobs, job_id);
@@ -207,6 +249,9 @@ void handle_job_get_results(struct Server *server, unsigned char metadata[MAXJOB
     }
 }
 
+/*
+ * fail_job() -- permanently mark job as failed, update stats, set failure message
+ */
 void fail_job(struct Job *job, struct Stats *stats){
     job->status = J_FAILURE;
     stats->jobs_failed++;
@@ -214,6 +259,9 @@ void fail_job(struct Job *job, struct Stats *stats){
     strcpy(job->results, "job failed.");
 }
 
+/*
+ * retry_job() -- re-queue job for retry, or fail it if max retries exceeded
+ */
 void retry_job(struct Server *server, struct Job *job){
     if (job->retry_ct++ >= 3){
         fail_job(job, server->stats);
@@ -224,6 +272,9 @@ void retry_job(struct Server *server, struct Job *job){
     job->worker_id = -1;
 }
 
+/*
+ * handle_worker_disconnection() -- clean up when worker disconnects, retry their current job if any
+ */
 void handle_worker_disconnection(struct Server *server, int worker_fd){
     printf("Worker %d disconnected.\n", worker_fd);
     close(worker_fd);
@@ -240,6 +291,11 @@ void handle_worker_disconnection(struct Server *server, int worker_fd){
     remove_worker(server->workers, worker_fd);
 }
 
+/*
+ * handle_worker_data() -- read and process incoming data from worker
+ *
+ * Handles WPACKET_STATUS (worker status updates) and WPACKET_RESULTS (job completion) packets
+ */
 void handle_worker_data(struct Server *server, int worker_fd){
     int rv;
     unsigned char buf[MAXBUFSIZE];
@@ -280,6 +336,9 @@ void handle_worker_data(struct Server *server, int worker_fd){
     }
 }
 
+/*
+ * manage_worker() -- handle worker state transitions for completed or failed jobs
+ */
 void manage_worker(struct Server *server, struct Worker *worker){
     if (worker->status == W_FAILURE){
         struct Job *job = get_job_by_id(server->jobs, worker->cur_job_id);
@@ -306,6 +365,9 @@ void manage_worker(struct Server *server, struct Worker *worker){
     }
 }
 
+/*
+ * manage_worker_statuses() -- iterate through all workers and handle non-busy/non-ready states
+ */
 void manage_worker_statuses(struct Server *server){
     struct Worker *worker = server->workers->head;
 
@@ -316,6 +378,11 @@ void manage_worker_statuses(struct Server *server){
     }
 }
 
+/*
+ * handle_client_request() -- accept client connection, parse request, and send response
+ *
+ * Handles JOBSUBMITID (new job), JOBSTATUSID (status query), and JOBRESULTID (get results) requests
+ */
 void handle_client_request(struct Server *server){
     printf("\nClient request!\n");
 
@@ -362,6 +429,9 @@ void handle_client_request(struct Server *server){
     printf("\n");
 }
 
+/*
+ * handle_new_worker() -- accept new worker connection, assign ID, add to workers list
+ */
 void handle_new_worker(struct Server *server){
     printf("New worker.\n");
 
@@ -400,6 +470,9 @@ int create_epoll(){
     return epoll_fd;
 }
 
+/*
+ * print_stats() -- display formatted server statistics to stdout
+ */
 void print_stats(struct Stats *stats){
     if (stats->jobs_processed > 0){
         stats->success_rate = stats->jobs_succeeded * 100 / stats->jobs_processed;
