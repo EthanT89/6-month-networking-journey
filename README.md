@@ -95,7 +95,7 @@ The goal isn't just to learn networking concepts—it's to build the discipline 
 - Implemented two versions: v1 (proof of concept) and v2 (production-ready with stats)
 - *Lesson: Network conditions expose architectural weaknesses. The proxy reveals problems that need solving.*
 
-**Week 8: Reliability Systems & Client Prediction (In Progress, Day 39/40)**
+**Week 8: Reliability Systems & Client Prediction (Complete)**
 - Implemented selective reliability on top of UDP for critical game events
 - **Reliable packet framework:**
   - ACK/retransmission system with sequence number tracking
@@ -119,6 +119,40 @@ The goal isn't just to learn networking concepts—it's to build the discipline 
   - Essential for detecting cheating or resolving sync issues
   - Timeout-based disconnection detection (removes inactive players)
 - *Lesson: UDP isn't "unreliable networking". It's a blank canvas where you choose what to make reliable. Position updates can be lossy; connection requests must be guaranteed. Client prediction makes the game feel responsive even with 100ms+ latency. The trick is graceful reconciliation when predictions are wrong.*
+
+### Month 3: Distributed Systems (February 2026)
+**Status: In Progress. Building infrastructure that scales.**
+
+**Week 9: Distributed Task Queue System (Complete, Days 41-45)**
+- Built production-style task queue with server, workers, and clients
+- **Architecture:**
+  - Epoll-based single-threaded server handling hundreds of connections
+  - Server listens on two ports: 1209 (clients), 1205 (workers)
+  - FIFO job queue with automatic assignment to available workers
+  - Workers execute jobs and report results back
+  - Clients submit jobs, query status, retrieve results
+- **Binary protocol:**
+  - APPID (4379) + 2-byte message type + data
+  - Efficient packet packing using helpers from Month 1
+  - TCP for reliability (no more UDP reliability layers needed)
+- **Job types:**
+  - wordcount, charcount, echo, capitalize (5-second simulated processing)
+  - Ready for real work: file processing coming in Week 10
+- **State management:**
+  - Jobs: IN_QUEUE → IN_PROGRESS → SUCCESS/FAILURE
+  - Workers: READY → BUSY → READY (with retry logic)
+  - Retry up to 3 times before permanent failure
+  - Worker disconnects detected and jobs automatically reassigned
+- **Real-time statistics:**
+  - Type "stats" in server terminal: jobs processed, success rate, active workers, queue depth
+  - Essential for debugging and watching the system work
+- **Load testing utilities:**
+  - `submit_jobs.c`: Submit N jobs rapidly to fill the queue
+  - `create_workers.c`: Spawn N worker processes via fork/execl
+  - Successfully tested with 1000 jobs + 5 workers
+  - Discovered system limits: crashed at 1500 workers (ulimit -u), learned 50-100 is the sweet spot
+- **~1,400 lines of new code** across server, worker, client, and 8 utility files
+- *Lesson: Distributed systems are about state management. Jobs have state, workers have state, everything can fail at any time. The hard part isn't the networking—it's keeping all that state consistent when things disconnect, timeout, or retry. This is what Redis, RabbitMQ, AWS SQS all do. Building it from scratch shows you what the abstractions hide.*
 
 ---
 
@@ -149,7 +183,8 @@ Every multiplayer game, real-time collaboration tool, and distributed system fac
 - Berkeley sockets (POSIX)
 - UDP for real-time state updates
 - TCP for reliable messaging
-- Poll-based I/O multiplexing
+- Poll-based I/O multiplexing (Month 1-2)
+- Epoll-based event-driven I/O (Month 3, Linux-specific)
 
 **Tools:**
 - GCC compiler
@@ -189,6 +224,18 @@ Every multiplayer game, real-time collaboration tool, and distributed system fac
 - Timeout-based connection management
 - Client-side prediction with server reconciliation
 - Position correction for divergent client state
+
+**Month 3: Distributed Systems Infrastructure**
+- Epoll-based event-driven architecture (single-threaded, handles 1000+ connections)
+- Distributed task queue pattern (server/worker/client architecture)
+- FIFO job queuing with automatic assignment
+- Job and worker state machine management
+- Retry logic and failure handling (automatic job reassignment)
+- Dual-port server architecture (separate ports for different client types)
+- Load testing utilities (rapid job submission, worker spawning)
+- Real-time statistics and system monitoring
+- Process management with fork/execl
+- System resource limits and capacity planning
 
 ---
 
@@ -233,11 +280,11 @@ Read for understanding, then build from scratch. No copy-paste. If I don't under
 
 ## Progress Tracking
 
-**Days completed:** 39/120 (Month 2, Week 8 - Day 39/40)
+**Days completed:** 45/120 (Month 3, Week 9)
 
-**Current streak:** 39 days
+**Current streak:** 45 days
 
-**Projects shipped:** 7
+**Projects shipped:** 8
 - TCP Chat Server (Week 4)
 - Multiplayer Movement Server (Week 5)
 - Treasure Hunt Game (Week 6)
@@ -245,8 +292,9 @@ Read for understanding, then build from scratch. No copy-paste. If I don't under
 - UDP Proxy v2 with Statistics (Week 7)
 - Reliable Packet System (Week 8)
 - Client-Side Prediction (Week 8)
+- Distributed Task Queue System (Week 9)
 
-**Lines of code written:** ~4,000+ (not counting iterations and rewrites)
+**Lines of code written:** ~5,400+ (not counting iterations and rewrites)
 
 ---
 
@@ -262,29 +310,29 @@ The consistency compounds.
 
 ---
 
-**Last updated:** February 19, 2026 (Month 2, Week 8, Day 39/40)
+**Last updated:** February 27, 2026 (Month 3, Week 9, Day 45)
 
-**Next challenge:** Planning Week 9 and beyond. Entity interpolation for remote players, improved retransmission logic, and historical state tracking for better server reconciliation.
+**Next challenge:** File-based jobs and multithreading for complex processing.
 
 ---
 
 ## What's Next
 
-**Week 9 (Planned):** Advanced prediction & interpolation
-- Entity interpolation for smooth remote player movement
-- Enhanced retransmission logic (exponential backoff)
-- Historical game state tracking for better server reconciliation
-- Reliable treasure collection packets
+**Week 10 (Planned):** File Transfer & Multithreading
+- File-based job system: image resizing, file compression, document conversion
+- Chunked file transfer protocol (can't rely on file paths when workers are on different machines)
+- Worker multithreading with pthreads for concurrent job processing
+- Thread-safe data structures and mutex coordination
 
-**Week 10 (Planned):** Lag compensation
-- Server-side rewind for hit detection
-- Client-server time synchronization
-- Input buffering and replay
+**Week 11-12 (Planned):** Persistence & Distribution
+- Job persistence (SQLite/flat file storage to survive crashes)
+- Distributed workers across multiple machines
+- Job priority system and better load balancing
+- Graceful shutdown protocols
 
-**Month 3 (Planned):** Advanced multiplayer concepts
-- Interest management (only send relevant updates)
-- Delta compression (send only what changed)
-- Snapshot interpolation
-- More sophisticated protocols
+**Month 4 (Planned):** Back to game networking or further infrastructure work
+- TBD based on what feels most valuable
+- Possibly: entity interpolation, lag compensation, interest management
+- Or: deeper into distributed systems, consensus algorithms, replication
 
-**Months 4-6:** TBD based on where the journey leads
+**Months 5-6:** TBD based on where the journey leads
