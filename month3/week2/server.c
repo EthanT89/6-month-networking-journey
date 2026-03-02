@@ -191,14 +191,42 @@ void get_status_msg(unsigned char msg[MAXBUFSIZE], struct Server *server, int jo
     }
 }
 
+void handle_file_transfer(struct Job *job, int sockfd){
+    printf("handling file transfer\n");
+
+    int epollfd = create_epoll();
+    struct epoll_event events[MAXEPOLLEVENTS];
+
+    add_epoll_fd(epollfd, sockfd);
+
+    while (1) {
+        int nfds = epoll_wait(epoll_fd, events, MAXEPOLLEVENTS, 50);
+        if (nfds == -1) {
+            perror("epoll_wait");
+            break;
+        }
+
+        for (int i = 0; i < nfds; i++) {
+            if (events[i].events & EPOLLIN) {
+                int fd = events[i].data.fd;
+                if (fd == sockfd){
+                    // transfer to file
+                }
+
+            }
+        }
+}
+
 /*
  * handle_job_submission() -- create new job from metadata and add to queue
  */
-void handle_job_submission(struct Server *server, unsigned char metadata[MAXJOBMETADATASIZE], unsigned char return_msg[MAXBUFSIZE]){
+void handle_job_submission(struct Server *server, unsigned char return_msg[MAXBUFSIZE], int sockfd){
     struct Job *job = create_blank_job();
     job->job_id = server->job_id_ct++;
     job->job_type = 0; // TODO: determine job types
-    strncpy(job->results, metadata, MAXRESULTSIZE);
+    strncpy(job->results, "Job in progress.", 17);
+
+    handle_file_transfer(job, sockfd);
 
     add_job(server->jobs, job);
     add_to_queue(server->queue, job->job_id);
@@ -226,19 +254,31 @@ void check_queue(struct Server *server){
     job->status = J_IN_PROGRESS;
 }
 
+int handle_job_id_packet(int sockfd){
+    unsigned char buf[MAXBUFSIZE];
+
+    int bytes_received = recv(sockfd, buf, MAXBUFSIZE, 0);
+    if (bytes_received <= 0) return -1;
+
+    printf("%d bytes received\n", bytes_received);
+    printf("job id - %s\n", buf);
+
+    return atoi(buf);
+}
+
 /*
  * handle_job_status() -- retrieve and return status message for requested job_id
  */
-void handle_job_status(struct Server *server, unsigned char metadata[MAXJOBMETADATASIZE], unsigned char return_msg[MAXBUFSIZE]){
-    int job_id = atoi(metadata);
+void handle_job_status(struct Server *server, unsigned char return_msg[MAXBUFSIZE], int sockfd){
+    int job_id = handle_job_id_packet(sockfd);
     get_status_msg(return_msg, server, job_id);
 }
 
 /*
  * handle_job_get_results() -- retrieve and return job results for requested job_id
  */
-void handle_job_get_results(struct Server *server, unsigned char metadata[MAXJOBMETADATASIZE], unsigned char return_msg[MAXBUFSIZE]){
-    int job_id = atoi(metadata);
+void handle_job_get_results(struct Server *server, unsigned char return_msg[MAXBUFSIZE], int sockfd){
+    int job_id = handle_job_id_packet(sockfd);
     int status = get_job_status(server->jobs, job_id);
     struct Job *job = get_job_by_id(server->jobs, job_id);
     if (status == J_SUCCESS || status == J_IN_QUEUE){
@@ -378,6 +418,30 @@ void manage_worker_statuses(struct Server *server){
     }
 }
 
+int receive_client_packet(int sockfd, unsigned char metadata[MAXJOBMETADATASIZE]){
+    int app_id;
+    int cmd_type;
+    int offset = 0;
+
+    unsigned char buf[MAXBUFSIZE];
+    memset(buf, 0, MAXBUFSIZE);
+
+    int bytes_received = recv(sockfd, buf, 4, 0);
+    printf("%d bytes received\n", bytes_received);
+
+    app_id = unpacki16(buf+offset); offset += 2;
+    cmd_type = unpacki16(buf+offset); offset += 2;
+    memcpy(metadata, buf+offset, MAXJOBMETADATASIZE);
+
+    if (app_id != APPID){
+        printf("incorrect app id: %d - %d\n", app_id, cmd_type);
+        return -1;
+    }
+
+    printf("job type id: %d, metadata: %ld bytes\n", cmd_type, strlen(metadata));
+    return cmd_type;
+}
+
 /*
  * handle_client_request() -- accept client connection, parse request, and send response
  *
@@ -387,40 +451,30 @@ void handle_client_request(struct Server *server){
     printf("\nClient request!\n");
 
     struct sockaddr_storage *their_addr = malloc(sizeof *their_addr);
-    unsigned char buf[MAXBUFSIZE];
-    memset(buf, 0, MAXBUFSIZE);
     socklen_t len_t = sizeof *their_addr;
 
     unsigned char metadata[MAXJOBMETADATASIZE];
     unsigned char return_msg[MAXBUFSIZE];
-    int app_id;
     int cmd_type;
-    int offset = 0;
 
     int new_fd = accept(server->client_listener, (struct sockaddr*)their_addr,  &len_t);
-    recv(new_fd, buf, MAXBUFSIZE, 0);
+    cmd_type = receive_client_packet(new_fd, metadata);
 
-    app_id = unpacki16(buf+offset); offset += 2;
-    cmd_type = unpacki16(buf+offset); offset += 2;
-    memcpy(metadata, buf+offset, MAXJOBMETADATASIZE);
-
-    if (app_id != APPID){
-        printf("incorrect app id: %d - %d\n", app_id, cmd_type);
+    if (cmd_type == -1){
+        close(new_fd);
         return;
     }
 
-    printf("job type id: %d, metadata: %ld bytes\n", cmd_type, strlen(metadata));
-
     if (cmd_type == JOBSUBMITID){
-        handle_job_submission(server, metadata, return_msg);
+        handle_job_submission(server, return_msg, new_fd);
     }
 
     if (cmd_type == JOBSTATUSID){
-        handle_job_status(server, metadata, return_msg);
+        handle_job_status(server, return_msg, new_fd);
     }
 
     if (cmd_type == JOBRESULTID){
-        handle_job_get_results(server, metadata, return_msg);
+        handle_job_get_results(server, return_msg, new_fd);
     }
 
     send(new_fd, return_msg, strlen(return_msg), 0);
