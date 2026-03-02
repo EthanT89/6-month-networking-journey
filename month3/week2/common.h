@@ -8,6 +8,7 @@
 #define MAXBACKLOG 10000
 #define MAXEPOLLEVENTS 100000
 #define MAXBUFSIZE  100100//4096
+#define MAXFILEPATH 100
 
 // worker status
 #define W_READY 0
