@@ -30,6 +30,7 @@
 #define JOBSUBMITID 808
 #define JOBSTATUSID 909
 #define JOBRESULTID 707
+#define JOBID 606
 
 // worker packet types
 #define WPACKET_CONNECTED 901

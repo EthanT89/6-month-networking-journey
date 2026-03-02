@@ -17,6 +17,7 @@ struct Job *create_blank_job(){
     job->time_start = -1;
     job->worker_id = -1;
     job->results[0] = '\0';
+    job->file_path[0] = '\0';
 
     return job;
 }
