@@ -111,48 +111,94 @@ int validate_cmd_metadata(char *argv, int cmd_id){
     return is_all_digits(argv);
 }
 
-int main(int argc, char **argv){
+int receive_results(int sockfd){
+    unsigned char response[MAXBUFSIZE];
+    memset(response, 0, MAXBUFSIZE);
+    
+    recv(sockfd, response, MAXBUFSIZE, 0);
+    printf("%s\n", response);
+    memset(response, 0, MAXBUFSIZE);
+}
+
+int send_packet(int sockfd, unsigned char *data, int offset){
+    int bytes_sent = send(sockfd, data, offset, 0);
+    if (bytes_sent == -1) {
+        perror("Error: send packet\n");
+        exit(1);
+    }
+    printf("\n%d bytes sent.\n\n", bytes_sent);
+    return bytes_sent;
+}
+
+int send_file(int sockfd, char *file_name){
+
+    printf("Sending file to server. \"%s\"", file_name);
+    FILE *file = fopen(file_name, "r");
+
+}
+
+int validate_submission(int argc, char **argv){
     if (argc < 3){
         printf("usage: ./client [CMD] [METADATA]\n");
         exit(1);
     }
 
-    printf("\nConnecting to server...\n");
-    int sockfd = get_socket();
-    unsigned char metadata[MAXJOBMETADATASIZE];
-    unsigned char full_cmd[MAXBUFSIZE];
-    unsigned char response[MAXBUFSIZE];
-    memset(response, 0, MAXBUFSIZE);
-    memset(full_cmd, 0, MAXBUFSIZE);
-    memset(metadata, 0, MAXJOBMETADATASIZE);
-    int offset = 0;
-
     int cmd_id = identify_cmd_type(argv[1]);
-    int valid = validate_cmd_metadata(argv[2], cmd_id);
-
     if (cmd_id == -1){
-        close(sockfd);
         exit(1);
     }
+
+    int valid = validate_cmd_metadata(argv[2], cmd_id);
     if (valid == 0){
         printf("Job id must be a number.\n");
-        close(sockfd);
         exit(1);
     }
 
-    memset(metadata, 0, MAXJOBMETADATASIZE);
-    strncpy(metadata, argv[2], MAXJOBMETADATASIZE);
+    return cmd_id;
+}
 
-    packi16(full_cmd+offset, APPID); offset += 2;
-    packi16(full_cmd+offset, cmd_id); offset += 2;
-    memcpy(full_cmd+offset, metadata, MAXJOBMETADATASIZE); offset += strlen(metadata);
+void validate_file_path(char *path){
+    FILE *fs = fopen(path, "r");
 
-    int bytes_sent = send(sockfd, full_cmd, offset, 0);
-    printf("\n%d bytes sent.\n\n", bytes_sent);
+    if (fs == NULL){
+        perror("Invalid file path\n");
+        exit(1);
+    }
 
-    recv(sockfd, response, MAXBUFSIZE, 0);
-    printf("%s\n", response);
-    memset(response, 0, MAXBUFSIZE);
+    printf("valid file path\n");
+}
+
+int handle_send_id(int sockfd, unsigned char *metadata){
+    int rv = send_packet(sockfd, metadata, strlen(metadata));
+    if (rv > 0) return 1;
+}
+
+int handle_job_metadata(int sockfd, int job_type, unsigned char *metadata){
+    if (job_type != JOBSUBMITID){
+        printf("sending job id...\n");
+        return handle_send_id(sockfd, metadata);
+    }
+    return send_file(sockfd, metadata);
+}
+
+int main(int argc, char **argv){
+    int cmd_id = validate_submission(argc, argv);
+    if (cmd_id == JOBSUBMITID) validate_file_path(argv[2]);
+
+    printf("\nConnecting to server...\n");
+    int sockfd = get_socket();
+    int offset = 0;
+
+    unsigned char job_header[MAXBUFSIZE];
+    memset(job_header, 0, MAXBUFSIZE);
+
+    packi16(job_header+offset, APPID); offset += 2;
+    packi16(job_header+offset, cmd_id); offset += 2;
+    send_packet(sockfd, job_header, offset);
+
+    handle_job_metadata(sockfd, cmd_id, argv[2]);
+
+    receive_results(sockfd);
 
     close(sockfd);
 }
