@@ -4,7 +4,6 @@
         "gcc": true
     },
     "files.exclude": {
-        "**/.gitignore": true,
         "**/.git": true
     },
     "files.watcherExclude": {
