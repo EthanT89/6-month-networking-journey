@@ -17,6 +17,7 @@
 // custom imports
 #include "./common.h"
 #include "./utils/buffer_manipulation.h"
+#include "./utils/file_transfer.h"
 
 /*
  * get_socket() -- create and return a TCP connection to the server's client port
@@ -84,14 +85,6 @@ int identify_cmd_type(char *argv){
     return -1;
 }
 
-long get_file_size(FILE *file) {
-    long size;
-    fseek(file, 0, SEEK_END);
-    size = ftell(file);
-    fseek(file, 0, SEEK_SET); // Reset to beginning
-    return size;
-}
-
 /*
  * is_all_digits() -- validate that a string contains only numeric digits
  */
@@ -134,47 +127,8 @@ int send_packet(int sockfd, unsigned char *data, int offset){
         perror("Error: send packet\n");
         exit(1);
     }
-    printf("\n%d bytes sent.\n\n", bytes_sent);
+    printf("%d bytes sent.\n", bytes_sent);
     return bytes_sent;
-}
-
-int send_file(int sockfd, char *file_name){
-	printf("[Client] Sending %s to the Server...\n", file_name);
-    FILE *fs = fopen(file_name, "r");
-    long file_size = get_file_size(fs);
-    char sdbuf[MAXBUFSIZE]; 
-
-    if(fs == NULL){
-        printf("ERROR: File %s not found.\n", file_name);
-        exit(1);
-    }
-
-    memset(sdbuf, 0, MAXBUFSIZE);
-    int fs_block_sz;
-    int bytes_sent;
-    int total_bytes = 0;
-    while((fs_block_sz = fread(sdbuf, sizeof(char), MAXBUFSIZE, fs)) > 0)
-    {
-        if((bytes_sent = send(sockfd, sdbuf, fs_block_sz, 0)) < 0)
-        {
-            fprintf(stderr, "ERROR: Failed to send file %s.\n", file_name);
-            exit(1);
-        }
-        total_bytes += bytes_sent;
-        printf("sent %d bytes\n", bytes_sent);
-        memset(sdbuf, 0, MAXBUFSIZE);
-    }
-
-    memset(sdbuf, 0, MAXBUFSIZE);
-    strcpy(sdbuf, "FILE OK");
-    if(send(sockfd, sdbuf, 8, 0) < 0)
-    {
-        fprintf(stderr, "ERROR: Failed to send file %s.\n", file_name);
-        exit(1);
-    }
-
-    printf("File %s from Client was Sent! - %d bytes\n", file_name, total_bytes);
-
 }
 
 int validate_submission(int argc, char **argv){
@@ -252,7 +206,6 @@ int main(int argc, char **argv){
         strcpy(job_header+offset, argv[2]); offset += strlen(argv[2]);
 
         send_packet(sockfd, job_header, offset);
-        printf("job spec: %ld - %s\n", strlen(argv[2]), argv[2]);
     }
         
 

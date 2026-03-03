@@ -19,6 +19,8 @@
 #include "./utils/time_custom.h"
 #include "./utils/workers.h"
 #include "./utils/job_queue.h"
+#include "./utils/file_transfer.h"
+#include "./utils/epoll_helper.h"
 #include "./common.h"
 
 /*
@@ -117,33 +119,6 @@ int get_listening_socket(unsigned char *port){
 }
 
 /*
- * create_epoll() -- create an epoll instance and return it's file descriptor
- */
-int create_epoll(){
-    int epoll_fd = epoll_create1(0);
-    if (epoll_fd == -1) {
-        perror("epoll_create1");
-        exit(EXIT_FAILURE);
-    }
-    return epoll_fd;
-}
-
-/*
- * add_epoll_fd() -- register a file descriptor with epoll for read event monitoring
- */
-void add_epoll_fd(int epoll_fd, int new_fd){
-    struct epoll_event event;
-    event.events = EPOLLIN;
-    event.data.fd = new_fd;
-
-    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, new_fd, &event) == -1) {
-        perror("epoll_ctl");
-        close(epoll_fd);
-        exit(EXIT_FAILURE);
-    }
-}
-
-/*
  * assign_to_worker() -- find available worker and assign job to them
  *
  * Sends WPACKET_NEWJOB packet with job_id and metadata. Returns worker ID on success, -1 if no workers available.
@@ -204,58 +179,10 @@ void get_status_msg(unsigned char msg[MAXBUFSIZE], struct Server *server, int jo
 }
 
 void handle_file_transfer(struct Job *job, int sockfd){
-    printf("handling file transfer\n");
-
-    int epollfd = create_epoll();
-    struct epoll_event events[MAXEPOLLEVENTS];
-
-    char buf[MAXBUFSIZE];
-    add_epoll_fd(epollfd, sockfd);
-
     char fname[MAXFILEPATH];
     sprintf(fname, "./server_storage/job-%d.txt", job->job_id);
  
-    while (1) {
-        int nfds = epoll_wait(epollfd, events, MAXEPOLLEVENTS, 50);
-        if (nfds == -1) {
-            perror("epoll_wait");
-            break;
-        }
-
-        for (int i = 0; i < nfds; i++) {
-            if (events[i].events & EPOLLIN) {
-                int fd = events[i].data.fd;
-                if (fd == sockfd){
-                    int bytes_read;
-
-                    if ((bytes_read = read(sockfd, buf, MAXBUFSIZE)) == 0){
-                        return;
-                    }
-                    FILE *fptr = fopen(fname ,"a");
-
-                    printf("file read: %s\n", buf);
-                    printf("%s\n", buf+(bytes_read - 8));
-
-                    if (bytes_read > 7 && strncmp(buf+(bytes_read - 8), "FILE OK", 8) == 0){
-                        printf("file read done.\n");
-
-                        buf[bytes_read - 8] = '\0';
-                        fprintf(fptr, "%s", buf);   
-                        fclose(fptr); // Always close the file
-                        memset(buf, 0, MAXBUFSIZE);
-                        return;
-                    }
-
-                    fprintf(fptr, "%s", buf);   
-                    fclose(fptr); // Always close the file
-                    memset(buf, 0, MAXBUFSIZE);
-                } else {
-                    printf("unknown socket: %d\n", fd);
-                }
-
-            }
-        }
-    }
+    receive_file(fname, sockfd);
 }
 
 void handle_job_spec(struct Job *job, int sockfd){

@@ -6,7 +6,7 @@ From the `month3/week2/` directory:
 
 **Server:**
 ```bash
-gcc server.c ./utils/workers.c ./utils/buffer_manipulation.c ./utils/time_custom.c ./utils/jobs.c ./utils/job_queue.c -o server
+gcc server.c ./utils/workers.c ./utils/buffer_manipulation.c ./utils/time_custom.c ./utils/jobs.c ./utils/job_queue.c ./utils/file_transfer.c -o server
 ```
 
 **Worker:**
@@ -16,7 +16,7 @@ gcc worker.c ./utils/buffer_manipulation.c ./utils/job_processing.c -o worker
 
 **Client:**
 ```bash
-gcc client.c ./utils/buffer_manipulation.c -o client
+gcc client.c ./utils/buffer_manipulation.c ./utils/file_transfer.c ./utils/epoll_helper.c -o client
 ```
 
 **Load Testing Utilities:**
