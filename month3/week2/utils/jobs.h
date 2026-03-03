@@ -30,6 +30,7 @@ struct Job {
     int retry_ct;
     int status;
     unsigned char results[MAXRESULTSIZE];
+    unsigned char job_spec[MAXJOBCOMMANDSIZE];
     char file_path[MAXFILEPATH];
     int time_start;
 

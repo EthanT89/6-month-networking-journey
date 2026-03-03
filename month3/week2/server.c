@@ -212,10 +212,8 @@ void handle_file_transfer(struct Job *job, int sockfd){
     char buf[MAXBUFSIZE];
     add_epoll_fd(epollfd, sockfd);
 
-    printf("probs here\n");
     char fname[MAXFILEPATH];
     sprintf(fname, "./server_storage/job-%d.txt", job->job_id);
-    printf("hm\n");
  
     while (1) {
         int nfds = epoll_wait(epollfd, events, MAXEPOLLEVENTS, 50);
@@ -228,22 +226,50 @@ void handle_file_transfer(struct Job *job, int sockfd){
             if (events[i].events & EPOLLIN) {
                 int fd = events[i].data.fd;
                 if (fd == sockfd){
-                    printf("crash?\n");
-                    FILE *fptr = fopen(fname ,"a");
+                    int bytes_read;
 
-                    if (read(sockfd, buf, MAXBUFSIZE) == 0){
+                    if ((bytes_read = read(sockfd, buf, MAXBUFSIZE)) == 0){
                         return;
                     }
+                    FILE *fptr = fopen(fname ,"a");
+
                     printf("file read: %s\n", buf);
+                    printf("%s\n", buf+(bytes_read - 8));
+
+                    if (bytes_read > 7 && strncmp(buf+(bytes_read - 8), "FILE OK", 8) == 0){
+                        printf("file read done.\n");
+
+                        buf[bytes_read - 8] = '\0';
+                        fprintf(fptr, "%s", buf);   
+                        fclose(fptr); // Always close the file
+                        memset(buf, 0, MAXBUFSIZE);
+                        return;
+                    }
 
                     fprintf(fptr, "%s", buf);   
                     fclose(fptr); // Always close the file
                     memset(buf, 0, MAXBUFSIZE);
+                } else {
+                    printf("unknown socket: %d\n", fd);
                 }
 
             }
         }
     }
+}
+
+void handle_job_spec(struct Job *job, int sockfd){
+    printf("\n== IN HANDLE JOB SPEC ==\n");
+    // receive job spec packet
+    int bytes_read;
+    unsigned char buf[MAXBUFSIZE];
+    memset(buf, 0, MAXBUFSIZE);
+
+    bytes_read = read(sockfd, buf, 2);
+    int header_size = unpacki16(buf);
+
+    memset(buf, 0, MAXBUFSIZE);
+    bytes_read = read(sockfd, buf, header_size);
 }
 
 /*
@@ -255,6 +281,7 @@ void handle_job_submission(struct Server *server, unsigned char return_msg[MAXBU
     job->job_type = 0; // TODO: determine job types
     strncpy(job->results, "Job in progress.", 17);
 
+    handle_job_spec(job, sockfd);
     handle_file_transfer(job, sockfd);
 
     add_job(server->jobs, job);

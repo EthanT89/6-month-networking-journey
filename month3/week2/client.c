@@ -139,28 +139,41 @@ int send_packet(int sockfd, unsigned char *data, int offset){
 }
 
 int send_file(int sockfd, char *file_name){
-	printf("[Client] Sending %s to the Server... ", file_name);
+	printf("[Client] Sending %s to the Server...\n", file_name);
     FILE *fs = fopen(file_name, "r");
     long file_size = get_file_size(fs);
-    char sdbuf[file_size]; 
+    char sdbuf[MAXBUFSIZE]; 
 
     if(fs == NULL){
         printf("ERROR: File %s not found.\n", file_name);
         exit(1);
     }
 
-    bzero(sdbuf, file_size); 
-    int fs_block_sz; 
-    while((fs_block_sz = fread(sdbuf, sizeof(char), file_size, fs)) > 0)
+    memset(sdbuf, 0, MAXBUFSIZE);
+    int fs_block_sz;
+    int bytes_sent;
+    int total_bytes = 0;
+    while((fs_block_sz = fread(sdbuf, sizeof(char), MAXBUFSIZE, fs)) > 0)
     {
-        if(send(sockfd, sdbuf, fs_block_sz, 0) < 0)
+        if((bytes_sent = send(sockfd, sdbuf, fs_block_sz, 0)) < 0)
         {
             fprintf(stderr, "ERROR: Failed to send file %s.\n", file_name);
-            break;
+            exit(1);
         }
-        bzero(sdbuf, file_size);
+        total_bytes += bytes_sent;
+        printf("sent %d bytes\n", bytes_sent);
+        memset(sdbuf, 0, MAXBUFSIZE);
     }
-    printf("Ok File %s from Client was Sent!\n", file_name);
+
+    memset(sdbuf, 0, MAXBUFSIZE);
+    strcpy(sdbuf, "FILE OK");
+    if(send(sockfd, sdbuf, 8, 0) < 0)
+    {
+        fprintf(stderr, "ERROR: Failed to send file %s.\n", file_name);
+        exit(1);
+    }
+
+    printf("File %s from Client was Sent! - %d bytes\n", file_name, total_bytes);
 
 }
 
@@ -225,9 +238,23 @@ int main(int argc, char **argv){
     unsigned char job_header[MAXBUFSIZE];
     memset(job_header, 0, MAXBUFSIZE);
 
+    // Send job header
     packi16(job_header+offset, APPID); offset += 2;
     packi16(job_header+offset, cmd_id); offset += 2;
     send_packet(sockfd, job_header, offset);
+
+    // Send job specs
+    if (cmd_id == JOBSUBMITID){
+        offset = 0;
+        
+        memset(job_header, 0, MAXBUFSIZE);
+        packi16(job_header+offset, strlen(argv[2])); offset += 2;
+        strcpy(job_header+offset, argv[2]); offset += strlen(argv[2]);
+
+        send_packet(sockfd, job_header, offset);
+        printf("job spec: %ld - %s\n", strlen(argv[2]), argv[2]);
+    }
+        
 
     handle_job_metadata(sockfd, cmd_id, argv[3]);
 
