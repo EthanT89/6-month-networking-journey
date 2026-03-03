@@ -84,6 +84,14 @@ int identify_cmd_type(char *argv){
     return -1;
 }
 
+long get_file_size(FILE *file) {
+    long size;
+    fseek(file, 0, SEEK_END);
+    size = ftell(file);
+    fseek(file, 0, SEEK_SET); // Reset to beginning
+    return size;
+}
+
 /*
  * is_all_digits() -- validate that a string contains only numeric digits
  */
@@ -131,9 +139,28 @@ int send_packet(int sockfd, unsigned char *data, int offset){
 }
 
 int send_file(int sockfd, char *file_name){
+	printf("[Client] Sending %s to the Server... ", file_name);
+    FILE *fs = fopen(file_name, "r");
+    long file_size = get_file_size(fs);
+    char sdbuf[file_size]; 
 
-    printf("Sending file to server. \"%s\"", file_name);
-    FILE *file = fopen(file_name, "r");
+    if(fs == NULL){
+        printf("ERROR: File %s not found.\n", file_name);
+        exit(1);
+    }
+
+    bzero(sdbuf, file_size); 
+    int fs_block_sz; 
+    while((fs_block_sz = fread(sdbuf, sizeof(char), file_size, fs)) > 0)
+    {
+        if(send(sockfd, sdbuf, fs_block_sz, 0) < 0)
+        {
+            fprintf(stderr, "ERROR: Failed to send file %s.\n", file_name);
+            break;
+        }
+        bzero(sdbuf, file_size);
+    }
+    printf("Ok File %s from Client was Sent!\n", file_name);
 
 }
 
@@ -146,6 +173,12 @@ int validate_submission(int argc, char **argv){
     int cmd_id = identify_cmd_type(argv[1]);
     if (cmd_id == -1){
         exit(1);
+    }
+
+    if (cmd_id == JOBSUBMITID){
+        if (argc < 4){
+            printf("usage: ./client submit [JOBTYPE] [FILEPATH]\n");
+        }
     }
 
     int valid = validate_cmd_metadata(argv[2], cmd_id);
@@ -183,7 +216,7 @@ int handle_job_metadata(int sockfd, int job_type, unsigned char *metadata){
 
 int main(int argc, char **argv){
     int cmd_id = validate_submission(argc, argv);
-    if (cmd_id == JOBSUBMITID) validate_file_path(argv[2]);
+    if (cmd_id == JOBSUBMITID) validate_file_path(argv[3]);
 
     printf("\nConnecting to server...\n");
     int sockfd = get_socket();
@@ -196,7 +229,7 @@ int main(int argc, char **argv){
     packi16(job_header+offset, cmd_id); offset += 2;
     send_packet(sockfd, job_header, offset);
 
-    handle_job_metadata(sockfd, cmd_id, argv[2]);
+    handle_job_metadata(sockfd, cmd_id, argv[3]);
 
     receive_results(sockfd);
 

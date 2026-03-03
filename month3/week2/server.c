@@ -117,6 +117,18 @@ int get_listening_socket(unsigned char *port){
 }
 
 /*
+ * create_epoll() -- create an epoll instance and return it's file descriptor
+ */
+int create_epoll(){
+    int epoll_fd = epoll_create1(0);
+    if (epoll_fd == -1) {
+        perror("epoll_create1");
+        exit(EXIT_FAILURE);
+    }
+    return epoll_fd;
+}
+
+/*
  * add_epoll_fd() -- register a file descriptor with epoll for read event monitoring
  */
 void add_epoll_fd(int epoll_fd, int new_fd){
@@ -197,10 +209,16 @@ void handle_file_transfer(struct Job *job, int sockfd){
     int epollfd = create_epoll();
     struct epoll_event events[MAXEPOLLEVENTS];
 
+    char buf[MAXBUFSIZE];
     add_epoll_fd(epollfd, sockfd);
 
+    printf("probs here\n");
+    char fname[MAXFILEPATH];
+    sprintf(fname, "./server_storage/job-%d.txt", job->job_id);
+    printf("hm\n");
+ 
     while (1) {
-        int nfds = epoll_wait(epoll_fd, events, MAXEPOLLEVENTS, 50);
+        int nfds = epoll_wait(epollfd, events, MAXEPOLLEVENTS, 50);
         if (nfds == -1) {
             perror("epoll_wait");
             break;
@@ -210,11 +228,22 @@ void handle_file_transfer(struct Job *job, int sockfd){
             if (events[i].events & EPOLLIN) {
                 int fd = events[i].data.fd;
                 if (fd == sockfd){
-                    // transfer to file
+                    printf("crash?\n");
+                    FILE *fptr = fopen(fname ,"a");
+
+                    if (read(sockfd, buf, MAXBUFSIZE) == 0){
+                        return;
+                    }
+                    printf("file read: %s\n", buf);
+
+                    fprintf(fptr, "%s", buf);   
+                    fclose(fptr); // Always close the file
+                    memset(buf, 0, MAXBUFSIZE);
                 }
 
             }
         }
+    }
 }
 
 /*
@@ -510,18 +539,6 @@ void handle_new_worker(struct Server *server){
     packi16(buf+offset, new_worker->id); offset += 2;
 
     send(new_fd, buf, offset, 0);
-}
-
-/*
- * create_epoll() -- create an epoll instance and return it's file descriptor
- */
-int create_epoll(){
-    int epoll_fd = epoll_create1(0);
-    if (epoll_fd == -1) {
-        perror("epoll_create1");
-        exit(EXIT_FAILURE);
-    }
-    return epoll_fd;
 }
 
 /*
