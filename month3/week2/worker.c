@@ -165,7 +165,7 @@ void handle_job_assignment(struct Self *self){
 
     char fname[MAXFILEPATH];
     sprintf(fname, "./worker_storage/worker-%d/temp.txt", self->id);
-    printf("yo\n");
+    fclose(fopen(fname, "w"));
     receive_file(fname, self->servfd);
 
     int rv = process_job(result, buf);

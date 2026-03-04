@@ -11,7 +11,7 @@ gcc server.c ./utils/workers.c ./utils/buffer_manipulation.c ./utils/time_custom
 
 **Worker:**
 ```bash
-gcc worker.c ./utils/buffer_manipulation.c ./utils/job_processing.c -o worker
+gcc worker.c ./utils/buffer_manipulation.c ./utils/job_processing.c ./utils/file_transfer.c ./utils/epoll_helper.c -o worker
 ```
 
 **Client:**
