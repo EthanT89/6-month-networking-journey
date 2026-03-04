@@ -13,11 +13,14 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 
 // custom imports
 #include "./common.h"
 #include "./utils/buffer_manipulation.h"
 #include "./utils/job_processing.h"
+#include "./utils/file_transfer.h"
+#include "./utils/epoll_helper.h"
 
 /*
  * Self -- worker state struct tracking current status and server connection
@@ -83,31 +86,27 @@ int get_socket(){
     return sockfd;
 }
 
-/*
- * add_epoll_fd() -- register a file descriptor with epoll for event monitoring
- */
-void add_epoll_fd(int epoll_fd, int new_fd){
-    struct epoll_event event;
-    event.events = EPOLLIN;
-    event.data.fd = new_fd;
+void reset_storage(int id){
 
-    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, new_fd, &event) == -1) {
-        perror("epoll_ctl");
-        close(epoll_fd);
-        exit(EXIT_FAILURE);
-    }
-}
+    char filename[MAXFILEPATH];
+    char dir_path[MAXFILEPATH];
+    
+    sprintf(filename, "./worker_storage/worker-%d/temp.txt", id);
+    sprintf(dir_path, "./worker_storage/worker-%d", id);
 
-/*
- * create_epoll() -- create an epoll instance and return it's file descriptor
- */
-int create_epoll(){
-    int epoll_fd = epoll_create1(0);
-    if (epoll_fd == -1) {
-        perror("epoll_create1");
-        exit(EXIT_FAILURE);
+    // Step 1: Delete the file inside the directory
+    if (remove((const char*)filename) == 0) {
+        printf("File deleted successfully.\n");
+    } else {
+        perror("Error deleting file");
     }
-    return epoll_fd;
+
+    // Step 2: Delete the now-empty directory
+    if (remove((const char*)dir_path) == 0) {
+        printf("Directory deleted successfully.\n");
+    } else {
+        perror("Error deleting directory");
+    }
 }
 
 /*
@@ -149,10 +148,25 @@ void handle_job_success(struct Self *self, unsigned char buf[MAXRESULTSIZE]){
  *
  * Sets status to W_BUSY, processes the job content, reports success/failure to server
  */
-void handle_job_assignment(struct Self *self, unsigned char buf[MAXBUFSIZE]){
+void handle_job_assignment(struct Self *self){
     self->status = W_BUSY;
     unsigned char result[MAXRESULTSIZE];
     sleep(5);
+
+    unsigned char buf[MAXBUFSIZE];
+    memset(buf, 0, MAXBUFSIZE);
+    read(self->servfd, buf, 2);
+
+    int spec_size = unpacki16(buf);
+    memset(buf, 0, MAXBUFSIZE);
+    read(self->servfd, buf, spec_size);
+    printf("spec size: %d\n", spec_size);
+    printf("buf: %s\n", buf);
+
+    char fname[MAXFILEPATH];
+    sprintf(fname, "./worker_storage/worker-%d/temp.txt", self->id);
+    printf("yo\n");
+    receive_file(fname, self->servfd);
 
     int rv = process_job(result, buf);
     if (rv <= -1){
@@ -201,7 +215,7 @@ void handle_server_data(struct Self *self, unsigned char buf[MAXBUFSIZE]){
     if (packetid == WPACKET_NEWJOB){
         printf("received new job. processing...\n");
         int jobid = unpacki16(buf+offset); offset += 2;
-        handle_job_assignment(self, buf+offset);
+        handle_job_assignment(self);
     }
 
     if (packetid == WPACKET_STATUS){
@@ -209,10 +223,12 @@ void handle_server_data(struct Self *self, unsigned char buf[MAXBUFSIZE]){
     }
 }
 
-void handle_shutdown(int serverfd, int epollfd){
+void handle_shutdown(int serverfd, int epollfd, int id){
     printf("shutting down...\n");
     close(serverfd);
     close(epollfd);
+
+    reset_storage(id);
     printf("goodbye.\n");
     exit(EXIT_SUCCESS);
 }
@@ -238,6 +254,15 @@ int main(){
     printf("ID: %d\nwaiting for jobs...", self->id);
     fflush(stdout);
 
+    char dir_name[MAXFILEPATH];
+    sprintf(dir_name, "./worker_storage/worker-%d", self->id);
+    int status = mkdir(dir_name, 0755);
+
+    if (status != 0){
+        //close(sockfd);
+        //exit(1);
+    }
+
     struct epoll_event events[MAXEPOLLEVENTS];
     while (1) {
 
@@ -258,10 +283,10 @@ int main(){
                 unsigned char buffer[MAXBUFSIZE];
                 memset(buffer, 0, sizeof buffer);
 
-                int rv = read(fd, buffer, MAXBUFSIZE);
+                int rv = read(fd, buffer, 6);
                 if (rv == 0) {
                     printf("server disconnected.\n");
-                    handle_shutdown(sockfd, epollfd);
+                    handle_shutdown(sockfd, epollfd, self->id);
                 }
                 handle_server_data(self, buffer);
                 printf("\n");

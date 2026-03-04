@@ -131,14 +131,21 @@ int assign_to_worker(struct Server *server, unsigned char metadata[MAXJOBMETADAT
     }
 
     unsigned char job_packet[MAXBUFSIZE];
+    memset(job_packet, 0, MAXBUFSIZE);
     int offset = 0;
     packi16(job_packet+offset, APPID); offset += 2;
     packi16(job_packet+offset, WPACKET_NEWJOB); offset += 2;
     packi16(job_packet+offset, job_id); offset += 2;
+    packi16(job_packet+offset, strlen(metadata)); offset += 2;
     memcpy(job_packet+offset, metadata, MAXJOBMETADATASIZE); offset += strlen(metadata);
+
+    char fname[MAXFILEPATH];
+    sprintf(fname, "./server_storage/job-%d.txt", job_id);
 
     printf("assigning job %d to worker %d\n\n", job_id, worker->id);
     send(worker->id, job_packet, offset, 0);
+    send_file(worker->id, fname);
+
     worker->cur_job_id = job_id;
     worker->status = W_BUSY;
     return worker->id;
@@ -186,7 +193,6 @@ void handle_file_transfer(struct Job *job, int sockfd){
 }
 
 void handle_job_spec(struct Job *job, int sockfd){
-    printf("\n== IN HANDLE JOB SPEC ==\n");
     // receive job spec packet
     int bytes_read;
     unsigned char buf[MAXBUFSIZE];
@@ -197,6 +203,8 @@ void handle_job_spec(struct Job *job, int sockfd){
 
     memset(buf, 0, MAXBUFSIZE);
     bytes_read = read(sockfd, buf, header_size);
+
+    strncpy(job->job_spec, buf, header_size);
 }
 
 /*
@@ -232,7 +240,8 @@ void check_queue(struct Server *server){
     if (job == NULL) return;
     job->time_start = get_time_ms();
 
-    int rv = assign_to_worker(server, job->results, job_id);
+    int rv = assign_to_worker(server, job->job_spec, job_id);
+    printf("job spec - %s\n", job->job_spec);
     job->worker_id = rv;
     job->status = J_IN_PROGRESS;
 }
