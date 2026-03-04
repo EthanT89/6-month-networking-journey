@@ -9,8 +9,8 @@ long get_file_size(FILE *file) {
 }
 
 void receive_file(char *fname, int sockfd){
-    printf("handling file transfer\n");
-
+    int total_bytes = 0;
+    int expected_bytes;
     int epollfd = create_epoll();
     struct epoll_event events[1];
 
@@ -26,35 +26,24 @@ void receive_file(char *fname, int sockfd){
 
         for (int i = 0; i < nfds; i++) {
             if (events[i].events & EPOLLIN) {
-                int fd = events[i].data.fd;
-                if (fd == sockfd){
-                    int bytes_read;
+                int bytes_read;
 
-                    if ((bytes_read = read(sockfd, buf, MAXBUFSIZE)) == 0){
-                        return;
-                    }
-                    FILE *fptr = fopen(fname ,"a");
+                if ((bytes_read = read(sockfd, buf, MAXBUFSIZE)) == 0){
+                    return;
+                }
+                FILE *fptr = fopen(fname ,"a");
 
-                    printf("file read: %s\n", buf);
-                    printf("%s\n", buf+(bytes_read - 8));
-
-                    if (bytes_read > 7 && strncmp(buf+(bytes_read - 8), "FILE OK", 8) == 0){
-                        printf("file read done.\n");
-
-                        buf[bytes_read - 8] = '\0';
-                        fprintf(fptr, "%s", buf);   
-                        fclose(fptr); // Always close the file
-                        memset(buf, 0, MAXBUFSIZE);
-                        return;
-                    }
-
+                if (bytes_read > 7 && strncmp(buf+(bytes_read - 8), "FILE OK", 8) == 0){
+                    buf[bytes_read - 8] = '\0';
                     fprintf(fptr, "%s", buf);   
                     fclose(fptr); // Always close the file
                     memset(buf, 0, MAXBUFSIZE);
-                } else {
-                    printf("unknown socket: %d\n", fd);
+                    return;
                 }
-
+                total_bytes += bytes_read;
+                fprintf(fptr, "%s", buf);   
+                fclose(fptr); // Always close the file
+                memset(buf, 0, MAXBUFSIZE);
             }
         }
     }
