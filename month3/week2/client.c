@@ -206,11 +206,11 @@ int main(int argc, char **argv){
         strcpy(job_header+offset, argv[2]); offset += strlen(argv[2]);
 
         send_packet(sockfd, job_header, offset);
+        handle_job_metadata(sockfd, cmd_id, argv[3]);
+    } else {
+        handle_job_metadata(sockfd, cmd_id, argv[2]);
     }
         
-
-    handle_job_metadata(sockfd, cmd_id, argv[3]);
-
     receive_results(sockfd);
 
     close(sockfd);
