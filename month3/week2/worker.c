@@ -37,6 +37,8 @@ struct Self {
     int status;
     int errcode;
 
+    char dir[MAXFILEPATH];
+
     int servfd;
 };
 
@@ -88,17 +90,15 @@ int get_socket(){
 
 void reset_storage(int id){
 
-    char filename[MAXFILEPATH];
     char dir_path[MAXFILEPATH];
-    
-    sprintf(filename, "./worker_storage/worker-%d/temp.txt", id);
+    char clear_cmd[MAXFILEPATH];
     sprintf(dir_path, "./worker_storage/worker-%d", id);
+    sprintf(clear_cmd, "cd ./worker_storage/worker-%d/ && rm -rf *", id);
 
-    // Step 1: Delete the file inside the directory
-    if (remove((const char*)filename) == 0) {
-        printf("File deleted successfully.\n");
+    if (system(clear_cmd) == 0) {
+        printf("All files deleted successfully.\n");
     } else {
-        perror("Error deleting file");
+        printf("Failed to delete files.\n");
     }
 
     // Step 2: Delete the now-empty directory
@@ -122,25 +122,28 @@ void handle_job_failure(struct Self *self){
     packi16(update+offset, WPACKET_STATUS); offset += 2;
     packi16(update+offset, self->status); offset += 2;
     packi16(update+offset, self->errcode); offset += 2;
-
     send(self->servfd, update, offset, 0);
 }
 
 /*
  * handle_job_success() -- notify server of job completion and send results
  */
-void handle_job_success(struct Self *self, unsigned char buf[MAXRESULTSIZE]){
+void handle_job_success(struct Self *self){
     printf("job complete.\n");
     self->errcode = 1;
     self->status = W_SUCCESS;
     unsigned char update[MAXBUFSIZE];
+    unsigned char file_path[MAXFILEPATH+15];
     int offset = 0;
 
     packi16(update+offset, APPID); offset += 2;
-    packi16(update+offset, WPACKET_RESULTS); offset += 2;
-    strncpy(update+offset, buf, MAXBUFSIZE-offset); offset += strlen(buf);
-
+    packi16(update+offset, WPACKET_STATUS); offset += 2;
+    packi16(update+offset, self->status); offset += 2;
+    packi16(update+offset, self->errcode); offset += 2;
     send(self->servfd, update, offset, 0);
+
+    sprintf(file_path, "%sresults.txt", self->dir);
+    send_file(self->servfd, file_path);
 }
 
 /*
@@ -150,7 +153,6 @@ void handle_job_success(struct Self *self, unsigned char buf[MAXRESULTSIZE]){
  */
 void handle_job_assignment(struct Self *self){
     self->status = W_BUSY;
-    unsigned char result[MAXRESULTSIZE];
     sleep(5);
 
     unsigned char buf[MAXBUFSIZE];
@@ -164,11 +166,13 @@ void handle_job_assignment(struct Self *self){
     printf("buf: %s\n", buf);
 
     char fname[MAXFILEPATH];
-    sprintf(fname, "./worker_storage/worker-%d/temp.txt", self->id);
+    strcpy(fname, self->dir);
+    strcat(fname, "content.txt");
+    
     fclose(fopen(fname, "w"));
     receive_file(fname, self->servfd);
 
-    int rv = process_job(result, buf);
+    int rv = process_job(buf, self->dir);
     if (rv <= -1){
         printf("errcode %d\n", rv);
         self->errcode = rv;
@@ -179,7 +183,7 @@ void handle_job_assignment(struct Self *self){
     }
 
     self->jobs_completed++;
-    handle_job_success(self, result);
+    handle_job_success(self);
     self->status = W_READY;
 }
 
@@ -254,14 +258,8 @@ int main(){
     printf("ID: %d\nwaiting for jobs...", self->id);
     fflush(stdout);
 
-    char dir_name[MAXFILEPATH];
-    sprintf(dir_name, "./worker_storage/worker-%d", self->id);
-    int status = mkdir(dir_name, 0755);
-
-    if (status != 0){
-        //close(sockfd);
-        //exit(1);
-    }
+    sprintf(self->dir, "./worker_storage/worker-%d/", self->id);
+    int status = mkdir(self->dir, 0755);
 
     struct epoll_event events[MAXEPOLLEVENTS];
     while (1) {
