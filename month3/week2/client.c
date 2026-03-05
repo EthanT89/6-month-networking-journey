@@ -137,7 +137,7 @@ int send_packet(int sockfd, unsigned char *data, int offset){
         perror("Error: send packet\n");
         exit(1);
     }
-    printf("%d bytes sent.\n", bytes_sent);
+    //printf("%d bytes sent.\n", bytes_sent);
     return bytes_sent;
 }
 
@@ -175,7 +175,7 @@ void validate_file_path(char *path){
         exit(1);
     }
 
-    printf("valid file path\n");
+    //printf("valid file path\n");
 }
 
 int handle_send_id(int sockfd, unsigned char *metadata){
@@ -185,7 +185,7 @@ int handle_send_id(int sockfd, unsigned char *metadata){
 
 int handle_job_metadata(int sockfd, int job_type, unsigned char *metadata){
     if (job_type != JOBSUBMITID){
-        printf("sending job id...\n");
+        //printf("sending job id...\n");
         return handle_send_id(sockfd, metadata);
     }
     return send_file(sockfd, metadata);

@@ -292,8 +292,8 @@ int main(){
         }
 
         if (self->status == W_READY){
-            printf(".");
-            fflush(stdout);
+            //printf(".");
+            //fflush(stdout);
         }
     }
 
