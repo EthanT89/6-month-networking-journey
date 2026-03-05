@@ -7,6 +7,7 @@
 
 #include "./jobs.h"
 #include "../common.h"
+#include "./file_transfer.h"
 
 #include <stdio.h>
 #include <ctype.h>
@@ -14,12 +15,14 @@
 
 int determine_job_type(unsigned char buf[MAXBUFSIZE], int size);
 
-int job_wordcount(unsigned char result[MAXRESULTSIZE], unsigned char content[MAXBUFSIZE]);
+int job_charcount(FILE *results, FILE *content);
 
-int job_echo(unsigned char result[MAXRESULTSIZE], unsigned char content[MAXBUFSIZE]);
+int job_wordcount(FILE *results, FILE *content);
 
-int job_capitalize(unsigned char result[MAXRESULTSIZE], unsigned char content[MAXBUFSIZE]);
+int job_echo(FILE *results, FILE *content);
 
-int process_job(unsigned char result[MAXRESULTSIZE], unsigned char content[MAXBUFSIZE]);
+int job_capitalize(FILE *results, FILE *content);
+
+int process_job(unsigned char content[MAXBUFSIZE], unsigned char fname[MAXFILEPATH]);
 
 #endif

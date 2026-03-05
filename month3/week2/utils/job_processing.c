@@ -54,59 +54,74 @@ int determine_job_type(unsigned char buf[MAXBUFSIZE], int size){
  *
  * Words are defined as sequences of non-space characters separated by spaces
  */
-int job_wordcount(unsigned char result[MAXRESULTSIZE], unsigned char content[MAXBUFSIZE]){
-    int count = 0;
-    int len = strlen(content);
+int job_wordcount(FILE *results, FILE *content){
+    char content_read[MAXFILEREAD];
+    int bytes_read;
+    int wordcount = 0;
+    int seen_space = 1;
 
-    int seen_word = 0;
+    while ((bytes_read = fread(content_read, sizeof(char), MAXFILEREAD, content)) > 0){
 
-    for (int i = 0; i < len; i++){
-        if (content[i] == ' ') seen_word = 0;
-
-        if (content[i] != ' ' && seen_word == 0){
-            seen_word = 1;
-            count++;
+        for (int i = 0; i < bytes_read; i++){
+            if (content_read[i] == ' ') seen_space = 1;
+            else if (seen_space == 1) {
+                wordcount++;
+                seen_space = 0;
+            }
         }
     }
 
-    sprintf(result, "word count: %d", count);
+    fprintf(results, "%d total words", wordcount);
     return 1;
 }
 
 /*
  * job_charcount() -- count non-space characters in content string
  */
-int job_charcount(unsigned char result[MAXRESULTSIZE], unsigned char content[MAXBUFSIZE]){
-    int count = 0;
-    int len = strlen(content);
+int job_charcount(FILE *results, FILE *content){
+    char content_read[MAXFILEREAD];
+    int bytes_read;
+    int charcount = 0;
 
-    for (int i = 0; i < len; i++){
-        if (content[i] != ' ') count++;
+    while ((bytes_read = fread(content_read, sizeof(char), MAXFILEREAD, content)) > 0){
+        for (int i = 0; i < bytes_read; i++){
+            if (content_read[i] != ' ') charcount++;
+        }
     }
 
-    sprintf(result, "char count: %d", count);
+    fprintf(results, "%d total characters", charcount);
     return 1;
 }
 
 /*
  * job_echo() -- echo content back as result
  */
-int job_echo(unsigned char result[MAXRESULTSIZE], unsigned char content[MAXBUFSIZE]){
-    strncpy(result, content, MAXRESULTSIZE);
+int job_echo(FILE *results, FILE *content){
+    char content_read[MAXFILEREAD];
+    int bytes_read;
+
+    while ((bytes_read = fread(content_read, sizeof(char), MAXFILEREAD, content)) > 0){
+        fprintf(results, "%s", content_read);
+    }
     return 1;
 }
 
 /*
  * job_capitalize() -- convert all lowercase letters in content to uppercase
  */
-int job_capitalize(unsigned char result[MAXRESULTSIZE], unsigned char content[MAXBUFSIZE]){
-    for (int i = 0; i < strlen(content); i++){
-        if (islower(content[i])) {
-            content[i] = toupper(content[i]);
+int job_capitalize(FILE *results, FILE *content){
+    char content_read[MAXFILEREAD];
+    int bytes_read;
+
+    while ((bytes_read = fread(content_read, sizeof(char), MAXFILEREAD, content)) > 0){
+        for (int i = 0; i < bytes_read; i++){
+            if (islower(content_read[i])) {
+                fprintf(results, "%c", toupper(content_read[i]));
+                continue;
+            }
+            fprintf(results, "%c", content_read[i]);
         }
     }
-
-    strncpy(result, content, MAXRESULTSIZE);
     return 1;
 }
 
@@ -115,29 +130,44 @@ int job_capitalize(unsigned char result[MAXRESULTSIZE], unsigned char content[MA
  *
  * Determines job type from content, calls appropriate job function, returns result or error code
  */
-int process_job(unsigned char result[MAXRESULTSIZE], unsigned char content[MAXBUFSIZE]){
-    int job_type = determine_job_type(content, strlen(content));
+int process_job(unsigned char header[MAXBUFSIZE], unsigned char dir[MAXFILEPATH]){
+    int job_type = determine_job_type(header, strlen(header));
+    int rv = 1;
 
     if (job_type == -1){
         return WERR_INVALIDJOB;
     }
 
+    char fcontent[MAXFILEPATH];
+    strcpy(fcontent, dir);
+    strcat(fcontent, "content.txt");
+    FILE *content_file = fopen(fcontent ,"r");
+
+    char fresults[MAXFILEPATH];
+    strcpy(fresults, dir);
+    strcat(fresults, "results.txt");
+    FILE *results_file = fopen(fresults ,"w");
+    
+    fclose(fopen(fresults, "w"));
+
     if (job_type == JTYPE_WORDCOUNT){
-        return job_wordcount(result, content);
+        rv = job_wordcount(results_file, content_file);
+    } 
+    
+    else if (job_type == JTYPE_CHARCOUNT){
+        rv = job_charcount(results_file, content_file);
     }
 
-    if (job_type == JTYPE_CHARCOUNT){
-        return job_charcount(result, content);
+    else if (job_type == JTYPE_ECHO){
+        rv = job_echo(results_file, content_file);
     }
 
-    if (job_type == JTYPE_ECHO){
-        return job_echo(result, content);
+    else if (job_type == JTYPE_CAPITALIZE){
+        rv = job_capitalize(results_file, content_file);
     }
 
-    if (job_type == JTYPE_CAPITALIZE){
-        return job_capitalize(result, content);
-    }
-
-    return 1;
+    fclose(results_file);
+    fclose(content_file);
+    return rv;
 }
 
