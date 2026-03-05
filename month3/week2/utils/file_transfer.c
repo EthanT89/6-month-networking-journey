@@ -16,6 +16,8 @@ void receive_file(char *fname, int sockfd){
 
     char buf[MAXBUFSIZE];
     add_epoll_fd(epollfd, sockfd);
+
+    fclose(fopen(fname, "w"));
  
     while (1) {
         int nfds = epoll_wait(epollfd, events, 1, 50);
