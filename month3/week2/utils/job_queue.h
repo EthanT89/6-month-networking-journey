@@ -7,6 +7,8 @@
 
 #include <stdlib.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <string.h>
 
 /*
  * JobQ -- extremely basic job queue node
@@ -34,6 +36,8 @@ struct JobQ *create_jobq(int job_id);
  * create_queue() -- create an empty JobQueue struct and return its pointer
  */
 struct JobQueue *create_queue();
+
+void print_queue(struct JobQueue *queue);
 
 /*
  * add_to_queue() -- add a new job to the job queue

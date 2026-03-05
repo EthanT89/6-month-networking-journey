@@ -15,6 +15,23 @@ struct JobQ *create_jobq(int job_id){
     return jobq;
 }
 
+void print_queue(struct JobQueue *queue){
+    struct JobQ *job = queue->head;
+    int position = 1;
+
+    printf("\n=== JOBS IN QUEUE ===\n");
+    for (job; job != NULL; job = job->next){
+        printf("%d: Job %d\n", position, job->job_id);
+        position++;
+    }
+
+    if (queue->count == 0){
+        printf("0 jobs in queue.\n");
+    }
+
+    printf("\n");
+}
+
 /*
  * create_queue() -- initialize an empty job queue
  */
