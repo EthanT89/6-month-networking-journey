@@ -1,5 +1,5 @@
 /*
- * server.c -- Main processing server for robust task queue implementation (may be split across servers in time)
+ * server.c -- Dual-port epoll server managing job queue and worker pool for file-based task processing
  */
 
 // Main imports
@@ -373,6 +373,12 @@ void handle_worker_data(struct Server *server, int worker_fd){
     }
 }
 
+/*
+ * receive_worker_results() -- receive the file-based results of a given worker (triggered when a job is successfully completed)
+ *
+ * TODO: enhance file transfer failure mechanisms. Currently has no protection against a disconnection mid-file transfer.
+ * Unlikely to happen right now, but under real-world network conditions, could happen.
+ */
 void receive_worker_results(struct Worker *worker, struct Job *job){
     char fname[MAXFILEPATH];
     memset(fname, 0, MAXFILEPATH);
@@ -429,6 +435,9 @@ void manage_worker_statuses(struct Server *server){
     }
 }
 
+/*
+ * receive_client_packet() -- extracts the first 4 bytes of data stream from the client, then determines and returns the cmd_type id
+ */
 int receive_client_packet(int sockfd, unsigned char metadata[MAXJOBMETADATASIZE]){
     int app_id;
     int cmd_type;
@@ -614,6 +623,9 @@ struct Server *setup_server_struct(int cfd, int wfd, int pfd){
     return server;
 }
 
+/*
+ * del_storage() -- clear the `worker_storage` directory content. Force wipes the job history. 
+ */
 void del_storage(){
     if (system("cd /home/ethan/network-learning/month3/week2/server_storage && rm -rf *") == 0) {
         printf("All files deleted successfully.\n");

@@ -9,7 +9,7 @@
 #define MAXEPOLLEVENTS 100
 #define MAXBUFSIZE  4096
 #define MAXFILEPATH 100
-#define MAXFILEREAD 100
+#define MAXFILEREAD 100  // chunk size for streaming file reads
 
 // worker status
 #define W_READY 0

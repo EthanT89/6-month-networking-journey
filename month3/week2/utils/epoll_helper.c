@@ -1,3 +1,7 @@
+/*
+ * epoll_helper.c -- Epoll instance creation and FD registration utilities
+ */
+
 #include "./epoll_helper.h"
 
 /*

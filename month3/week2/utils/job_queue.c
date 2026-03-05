@@ -15,6 +15,9 @@ struct JobQ *create_jobq(int job_id){
     return jobq;
 }
 
+/*
+ * print_queue() -- display all jobs in queue with their positions for debugging
+ */
 void print_queue(struct JobQueue *queue){
     struct JobQ *job = queue->head;
     int position = 1;

@@ -1,5 +1,5 @@
 /*
- * job_processing.c -- job handling logic
+ * job_processing.c -- File-based job execution with streaming chunk processing
  */
 
 #include "./job_processing.h"

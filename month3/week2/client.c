@@ -1,5 +1,5 @@
 /*
- * client.c -- client request management and facilitation
+ * client.c -- CLI for job submission, status queries, and result retrieval
  */
 
 // Main imports

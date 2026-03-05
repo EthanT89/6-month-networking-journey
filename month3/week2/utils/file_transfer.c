@@ -1,5 +1,12 @@
+/*
+ * file_transfer.c -- Generic file send/receive functions using "FILE OK" sentinel protocol
+ */
+
 #include "./file_transfer.h"
 
+/*
+ * get_file_size() -- return file size in bytes using fseek/ftell, resets position to start
+ */
 long get_file_size(FILE *file) {
     long size;
     fseek(file, 0, SEEK_END);
@@ -8,6 +15,9 @@ long get_file_size(FILE *file) {
     return size;
 }
 
+/*
+ * receive_file() -- receive file from socket in chunks until "FILE OK" marker detected
+ */
 void receive_file(char *fname, int sockfd){
     int total_bytes = 0;
     int expected_bytes;
@@ -51,6 +61,9 @@ void receive_file(char *fname, int sockfd){
     }
 }
 
+/*
+ * send_file() -- send file in MAXBUFSIZE chunks followed by "FILE OK" sentinel marker
+ */
 int send_file(int sockfd, char *file_name){
 	printf("\nSending %s...\n", file_name);
     FILE *fs = fopen(file_name, "r");

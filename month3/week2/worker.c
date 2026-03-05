@@ -1,5 +1,5 @@
 /*
- * worker.c -- worker process for receiving and executing jobs from the server
+ * worker.c -- Worker process for receiving and executing file-based jobs from server
  */
 
 // Main imports
