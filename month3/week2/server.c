@@ -487,7 +487,7 @@ void handle_client_request(struct Server *server){
         handle_job_get_results(server, return_msg, new_fd);
     }
 
-    send(new_fd, return_msg, strlen(return_msg), 0);
+    send(new_fd, return_msg, strlen(return_msg+2)+2, 0);
 
     if (strncmp(return_msg+2, "file", 4) == 0) send_file(new_fd, return_msg+6);
     close(new_fd);

@@ -120,19 +120,15 @@ int receive_results(int sockfd){
     int flag = unpacki16(response);
     memset(response, 0, MAXBUFSIZE);
 
-    printf("in receive results\n");
-
-    if (flag > 0){
-        printf("see `./client_storage/results.txt` for results");
+    if (flag > 1){
+        printf("\nsee `./client_storage/results.txt` for results\n");
         recv(sockfd, response, flag, 0);
         receive_file("./client_storage/results.txt", sockfd);
     } else {
         recv(sockfd, response, MAXBUFSIZE, 0);
-        printf("response: %s\n", response);
+        printf("%s\n", response);
         memset(response, 0, MAXBUFSIZE);
     }
-    
-    
 }
 
 int send_packet(int sockfd, unsigned char *data, int offset){
