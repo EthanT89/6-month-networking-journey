@@ -323,6 +323,7 @@ void handle_worker_disconnection(struct Server *server, int worker_fd){
     if (worker->cur_job_id >= 0){
         struct Job *job = get_job_by_id(server->jobs, worker->cur_job_id);
         if (job != NULL){
+            printf("retrying job...\n");
             retry_job(server, job);
         }
     }
@@ -409,6 +410,8 @@ void manage_worker(struct Server *server, struct Worker *worker){
         worker->cur_job_id = -1;
         worker->status = W_READY;
         worker->jobs_completed++;
+        server->stats->jobs_succeeded++;
+        server->stats->jobs_processed++;
         return;
     }
 }
@@ -560,6 +563,10 @@ int handle_input(int stdin_fd, struct Server *server){
 
         if (strncmp(buffer, "stats", 5) == 0){
             print_stats(server->stats);
+        }
+
+        if (strncmp(buffer, "queue", 5) == 0){
+            print_queue(server->queue);
         }
     }
 
