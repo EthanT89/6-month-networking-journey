@@ -214,6 +214,7 @@ void handle_job_submission(struct Server *server, unsigned char return_msg[MAXBU
     struct Job *job = create_blank_job();
     job->job_id = server->job_id_ct++;
     job->job_type = 0; // TODO: determine job types
+    job->status = J_IN_QUEUE;
     strncpy(job->results, "Job in progress.", 17);
 
     handle_job_spec(job, sockfd);
@@ -248,6 +249,7 @@ void check_queue(struct Server *server){
 
 int handle_job_id_packet(int sockfd){
     unsigned char buf[MAXBUFSIZE];
+    memset(buf, 0, MAXBUFSIZE);
 
     int bytes_received = recv(sockfd, buf, MAXBUFSIZE, 0);
     if (bytes_received <= 0) return -1;
@@ -273,11 +275,16 @@ void handle_job_get_results(struct Server *server, unsigned char return_msg[MAXB
     int job_id = handle_job_id_packet(sockfd);
     int status = get_job_status(server->jobs, job_id);
     struct Job *job = get_job_by_id(server->jobs, job_id);
-    if (status == J_SUCCESS || status == J_IN_QUEUE){
-        strncpy(return_msg, job->results, MAXBUFSIZE);
+
+    if (status == J_SUCCESS){
+        printf("successs\n");
+        strncpy(return_msg+2, "file", MAXBUFSIZE);
+        strcat(return_msg+2, job->file_path);
+        packi16(return_msg, strlen(return_msg+2));
     } else {
+        packi16(return_msg, 1);
         printf("job not found or incomplete: %d\n", status);
-        get_status_msg(return_msg, server, job_id);
+        get_status_msg(return_msg+2, server, job_id);
     }
 }
 
@@ -333,7 +340,7 @@ void handle_worker_data(struct Server *server, int worker_fd){
     unsigned char buf[MAXBUFSIZE];
     memset(buf, 0, MAXBUFSIZE);
 
-    rv = read(worker_fd, buf, MAXBUFSIZE);
+    rv = read(worker_fd, buf, 4);
     if (rv == 0){
         handle_worker_disconnection(server, worker_fd);
     }
@@ -349,6 +356,10 @@ void handle_worker_data(struct Server *server, int worker_fd){
     struct Worker *worker = get_worker_by_id(server->workers, worker_fd);
 
     if (msg_type == WPACKET_STATUS){
+        memset(buf, 0, MAXBUFSIZE);
+        offset = 0;
+        
+        read(worker_fd, buf, 4);
         int status = unpacki16(buf+offset); offset += 2;
         int errcode = unpacki16(buf+offset); offset += 2;
         printf("worker %d status: [ %d ] | err [ %d ]\n", worker_fd, status, errcode);
@@ -357,15 +368,17 @@ void handle_worker_data(struct Server *server, int worker_fd){
     }
 
     if (msg_type == WPACKET_RESULTS){
-        worker->status = W_READY;
-        struct Job *job = get_job_by_id(server->jobs, worker->cur_job_id);
-        strcpy(job->results, buf+offset);
-        job->status = J_SUCCESS;
-        server->stats->jobs_succeeded++;
-        server->stats->jobs_processed++;
-        worker->cur_job_id = -1;
-        worker->jobs_completed++;
+        return; // switching to file transfer
     }
+}
+
+void receive_worker_results(struct Worker *worker, struct Job *job){
+    char fname[MAXFILEPATH];
+    memset(fname, 0, MAXFILEPATH);
+    sprintf(fname, "./server_storage/job-%d.txt", worker->cur_job_id);
+
+    receive_file(fname, worker->id);
+    strcpy(job->file_path, fname);
 }
 
 /*
@@ -390,6 +403,9 @@ void manage_worker(struct Server *server, struct Worker *worker){
         struct Job *job = get_job_by_id(server->jobs, worker->cur_job_id);
         if (job == NULL) return;
         job->status = J_SUCCESS;
+
+        receive_worker_results(worker, job);
+
         worker->cur_job_id = -1;
         worker->status = W_READY;
         worker->jobs_completed++;
@@ -446,7 +462,7 @@ void handle_client_request(struct Server *server){
     socklen_t len_t = sizeof *their_addr;
 
     unsigned char metadata[MAXJOBMETADATASIZE];
-    unsigned char return_msg[MAXBUFSIZE];
+    unsigned char return_msg[MAXBUFSIZE+2];
     int cmd_type;
 
     int new_fd = accept(server->client_listener, (struct sockaddr*)their_addr,  &len_t);
@@ -458,11 +474,13 @@ void handle_client_request(struct Server *server){
     }
 
     if (cmd_type == JOBSUBMITID){
-        handle_job_submission(server, return_msg, new_fd);
+        packi16(return_msg, 0);
+        handle_job_submission(server, return_msg+2, new_fd);
     }
 
     if (cmd_type == JOBSTATUSID){
-        handle_job_status(server, return_msg, new_fd);
+        packi16(return_msg, 0);
+        handle_job_status(server, return_msg+2, new_fd);
     }
 
     if (cmd_type == JOBRESULTID){
@@ -470,6 +488,8 @@ void handle_client_request(struct Server *server){
     }
 
     send(new_fd, return_msg, strlen(return_msg), 0);
+
+    if (strncmp(return_msg+2, "file", 4) == 0) send_file(new_fd, return_msg+6);
     close(new_fd);
 
     printf("\n");
@@ -587,6 +607,14 @@ struct Server *setup_server_struct(int cfd, int wfd, int pfd){
     return server;
 }
 
+void del_storage(){
+    if (system("cd /home/ethan/network-learning/month3/week2/server_storage && rm -rf *") == 0) {
+        printf("All files deleted successfully.\n");
+    } else {
+        printf("Failed to delete files.\n");
+    }
+}
+
 /*
  * handle_shutdown() -- safely shut down the server
  */
@@ -595,6 +623,7 @@ void handle_shutdown(struct Server *server){
     close(server->client_listener);
     close(server->worker_listener);
     close(server->epoll_fd);
+    del_storage();
     exit(EXIT_SUCCESS);
     printf("goodbye.\n");
 }
@@ -606,6 +635,8 @@ int main(){
     int epoll_fd = create_epoll();
 
     struct Server *server = setup_server_struct(client_fd, worker_fd, epoll_fd);
+
+    del_storage();
 
     // Event loop
     struct epoll_event events[MAXEPOLLEVENTS];
