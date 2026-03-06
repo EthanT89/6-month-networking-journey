@@ -13,6 +13,7 @@
 int determine_job_type(unsigned char buf[MAXBUFSIZE], int size){
     unsigned char keyword[size];
     int i = 0;
+    int type = -1;
 
     for (i; i < size; i++){
         if (buf[i] == ' '){
@@ -23,30 +24,43 @@ int determine_job_type(unsigned char buf[MAXBUFSIZE], int size){
     strncpy(keyword, buf, i);
     keyword[i] = '\0';
 
+    i++;
     memmove(buf, buf+i, MAXBUFSIZE-i);
 
     if (strlen(keyword) == 0){
-        printf("no keyword...\n");
-        return -1;
+        printf("huh\n");
+        return type;
     }
 
     if (strcmp(keyword, "wordcount") == 0){
-        return JTYPE_WORDCOUNT;
+        type =  JTYPE_WORDCOUNT;
     }
 
     if (strcmp(keyword, "echo") == 0){
-        return JTYPE_ECHO;
+        type = JTYPE_ECHO;
     }
 
     if (strcmp(keyword, "capitalize") == 0){
-        return JTYPE_CAPITALIZE;
+        type = JTYPE_CAPITALIZE;
     }
 
     if (strcmp(keyword, "charcount") == 0){
-        return JTYPE_CHARCOUNT;
+        type = JTYPE_CHARCOUNT;
     }
 
-    return -1;
+    if (strcmp(keyword, "csvsort") == 0){
+        type = JTYPE_CSVSORT;
+    }
+
+    if (strcmp(keyword, "csvstats") == 0){
+        type = JTYPE_CSVSTATS;
+    }
+
+    if (strcmp(keyword, "csvfilter") == 0){
+        type = JTYPE_CSVFILTER;
+    }
+
+    return type;
 }
 
 /*
@@ -125,6 +139,62 @@ int job_capitalize(FILE *results, FILE *content){
     return 1;
 }
 
+int job_csvstats(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
+    char content_read[MAXFILEREAD];
+    int bytes_read;
+
+    int total_newlines = 0;
+    int cols = 1;
+
+    while ((bytes_read = fread(content_read, sizeof(char), MAXFILEREAD, content)) > 0){
+        for (int i = 0; i < bytes_read; i++){
+            if (content_read[i] == '\n') {
+                total_newlines++;
+            }
+            else if (total_newlines == 0 && content_read[i] == ',') {
+                cols++;
+            }
+        }
+    }
+
+    fprintf(results, "%d total entries, %d columns", total_newlines-1, cols);
+    return 1;
+}
+
+int job_csvsort(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
+    return -1;
+}
+
+int job_csvfilter(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
+    char filter_keyword[MAXFILEPATH];
+    int j = 0;
+    for (j; j < strlen(header); j++){
+        if (header[j] == ' ');
+        break;
+    }
+    strncpy(filter_keyword, header, j);
+
+    char content_read[MAXFILEREAD];
+    int bytes_read;
+
+    int total_newlines = 0;
+    int cols = 1;
+
+    while ((bytes_read = fread(content_read, sizeof(char), MAXFILEREAD, content)) > 0){
+        for (int i = 0; i < bytes_read; i++){
+            if (content_read[i] == '\n') {
+                total_newlines++;
+            }
+            else if (total_newlines == 0) {
+                if (content_read[i] == ',') cols++;
+            }
+        }
+    }
+
+    fprintf(results, "%d total entries, %d columns", total_newlines-1, cols);
+    return 1;
+}
+
 /*
  * process_job() -- route job to appropriate handler based on type
  *
@@ -164,6 +234,18 @@ int process_job(unsigned char header[MAXBUFSIZE], unsigned char dir[MAXFILEPATH]
 
     else if (job_type == JTYPE_CAPITALIZE){
         rv = job_capitalize(results_file, content_file);
+    }
+
+    else if (job_type == JTYPE_CSVFILTER){
+        rv = job_csvfilter(results_file, content_file, header);
+    }
+
+    else if (job_type == JTYPE_CSVSORT){
+        rv = job_csvsort(results_file, content_file, header);
+    }
+
+    else if (job_type == JTYPE_CSVSTATS){
+        rv = job_csvstats(results_file, content_file, header);
     }
 
     fclose(results_file);

@@ -46,6 +46,9 @@
 #define JTYPE_ECHO 2501
 #define JTYPE_CAPITALIZE 2502
 #define JTYPE_CHARCOUNT 2503
+#define JTYPE_CSVSTATS 2504
+#define JTYPE_CSVSORT 2505
+#define JTYPE_CSVFILTER 2506
 
 // worker error codes
 #define WERR_NONE 1

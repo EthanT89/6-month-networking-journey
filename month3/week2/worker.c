@@ -153,7 +153,7 @@ void handle_job_success(struct Self *self){
  */
 void handle_job_assignment(struct Self *self){
     self->status = W_BUSY;
-    sleep(5);
+    // sleep(5);
 
     unsigned char buf[MAXBUFSIZE];
     memset(buf, 0, MAXBUFSIZE);
@@ -162,8 +162,8 @@ void handle_job_assignment(struct Self *self){
     int spec_size = unpacki16(buf);
     memset(buf, 0, MAXBUFSIZE);
     read(self->servfd, buf, spec_size);
-    printf("spec size: %d\n", spec_size);
-    printf("buf: %s\n", buf);
+    //printf("spec size: %d\n", spec_size);
+    //printf("buf: %s\n", buf);
 
     char fname[MAXFILEPATH];
     strcpy(fname, self->dir);

@@ -23,6 +23,12 @@ int job_echo(FILE *results, FILE *content);
 
 int job_capitalize(FILE *results, FILE *content);
 
+int job_csvstats(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]);
+
+int job_csvsort(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]);
+
+int job_csvfilter(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]);
+
 int process_job(unsigned char content[MAXBUFSIZE], unsigned char fname[MAXFILEPATH]);
 
 #endif
