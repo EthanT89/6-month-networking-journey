@@ -8,6 +8,7 @@
 #include "./jobs.h"
 #include "../common.h"
 #include "./file_transfer.h"
+#include "./csv/parse_csv.h"
 
 #include <stdio.h>
 #include <ctype.h>
