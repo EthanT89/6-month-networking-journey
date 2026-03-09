@@ -190,31 +190,45 @@ int job_csvsort(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
 
 int job_csvfilter(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
     char filter_keyword[MAXFILEPATH];
-    int j = 0;
-    for (j; j < strlen(header); j++){
-        if (header[j] == ' ');
-        break;
+    char filter_key[MAXFILEPATH];
+
+    extract_first_word(filter_keyword, header);
+    extract_first_word(filter_key, header);
+
+    printf("keyword: -%s-\n", filter_keyword);
+    printf("key: -%s-\n", filter_key);
+
+    struct CSV *csv = malloc(sizeof *csv);
+    csv->cols = 0;
+    csv->rows = 0;
+    parse_csv(csv, content);
+
+    int col_idx = -1;
+
+    for(int j = 0; j < csv->cols; j++){
+        if (strcmp(csv->csv_data[0][j], filter_keyword) == 0){
+            col_idx = j;
+            break;
+        }
     }
-    strncpy(filter_keyword, header, j);
+    if (col_idx == -1) return -1;
+    
+    for (int j = 0; j < csv->cols; j++){
+        if (j > 0) fprintf(results, ",");
+        fprintf(results, "%s", csv->csv_data[0][j]);
+    }
+    fprintf(results, "\n");
 
-    char content_read[MAXFILEREAD];
-    int bytes_read;
-
-    int total_newlines = 0;
-    int cols = 1;
-
-    while ((bytes_read = fread(content_read, sizeof(char), MAXFILEREAD, content)) > 0){
-        for (int i = 0; i < bytes_read; i++){
-            if (content_read[i] == '\n') {
-                total_newlines++;
+    for (int i = 0; i < csv->rows; i++){
+        if (strcmp(csv->csv_data[i][col_idx], filter_key) == 0){
+            for (int j = 0; j < csv->cols; j++){
+                if (j > 0) fprintf(results, ",");
+                fprintf(results, "%s", csv->csv_data[i][j]);
             }
-            else if (total_newlines == 0) {
-                if (content_read[i] == ',') cols++;
-            }
+            fprintf(results, "\n");
         }
     }
 
-    fprintf(results, "%d total entries, %d columns", total_newlines-1, cols);
     return 1;
 }
 
