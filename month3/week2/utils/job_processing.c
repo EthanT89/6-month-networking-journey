@@ -163,32 +163,114 @@ int job_capitalize(FILE *results, FILE *content){
 }
 
 int job_csvstats(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
-    char content_read[MAXFILEREAD];
-    int bytes_read;
+    int rows=0;
+    int cols=0;
 
-    int total_newlines = 0;
-    int cols = 1;
-
-    while ((bytes_read = fread(content_read, sizeof(char), MAXFILEREAD, content)) > 0){
-        for (int i = 0; i < bytes_read; i++){
-            if (content_read[i] == '\n') {
-                total_newlines++;
-            }
-            else if (total_newlines == 0 && content_read[i] == ',') {
-                cols++;
-            }
-        }
-    }
-
-    fprintf(results, "%d total entries, %d columns", total_newlines-1, cols);
+    get_size(content, &rows, &cols);
+    fprintf(results, "%d total entries, %d columns", rows, cols);
     return 1;
 }
 
+void job_csvsort_mergesort_helper(char ***csv, int col, int *idx_arr, int left, int middle, int right){
+    printf("merge sort helper called!\n");
+    printf("left: %d, right: %d, middle: %d\n", left, right, middle);
+
+    int i = left;
+    int j = middle+1;
+
+
+    int temp[right-left + 1];
+    int temp_idx = 0;
+
+    while (i <= middle && j <= right){
+        if (strcmp(csv[idx_arr[i]][col], csv[idx_arr[j]][col]) > 0){ // TODO: currently does not support strong string-integer comparison 
+            temp[temp_idx++] = idx_arr[i++];                        // (eg '32' < '5' with this scheme)
+        } else {
+            temp[temp_idx++] = idx_arr[j++]; 
+        }
+    }
+
+    while (j <= right){
+        temp[temp_idx++] = idx_arr[j++];
+    }
+
+    while (i <= middle){
+        temp[temp_idx++] = idx_arr[i++];
+    }
+
+    temp_idx = 0;
+    for (int i = left; i <= right; i++){
+        idx_arr[i] = temp[temp_idx++];
+        printf("%d - %s\n", idx_arr[i], csv[idx_arr[i]][col]);
+    }
+}
+
+void job_csvsort_mergesort(char ***csv, int col, int *idx_arr, int left, int right){
+    int middle = (left + right) / 2;
+
+    if (left >= right) return; // 1-element subarray is already sorted
+
+    // recursively merge sort
+    job_csvsort_mergesort(csv, col, idx_arr, left, middle);
+    job_csvsort_mergesort(csv, col, idx_arr, middle+1, right);
+
+    // merge the two sorted lists
+    job_csvsort_mergesort_helper(csv, col, idx_arr, left, middle, right);
+}
+
 int job_csvsort(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
-    return -1;
+    strip_whitespace(header);
+
+    char filter_keyword[MAXFILEPATH];
+
+    extract_first_word(filter_keyword, header);
+
+    printf("keyword: -%s-\n", filter_keyword);
+
+    struct CSV *csv = malloc(sizeof *csv);
+    csv->cols = 0;
+    csv->rows = 0;
+    parse_csv(csv, content);
+
+    int col_idx = -1;
+
+    for(int j = 0; j < csv->cols; j++){
+        if (strcmp(csv->csv_data[0][j], filter_keyword) == 0){
+            col_idx = j;
+            break;
+        }
+    }
+    if (col_idx == -1) return -1;
+
+    int idx_sort[csv->rows - 1];
+    for (int i = 1; i < csv->rows; i++){
+        idx_sort[i-1] = i;
+    }
+
+    for (int j = 0; j < csv->cols; j++){
+        if (j > 0) fprintf(results, ",");
+        fprintf(results, "%s", csv->csv_data[0][j]);
+    }
+    fprintf(results, "\n");
+
+    // sort the idx_sort by col val (eg csv[idx_sort[i]][col_idx] > ...)
+    // access: csv->csv_data[idx_sort[i]][col_idx] --- thus, i is the 'key' and should be used for iteration, while csv->csv_data[idx_sort[i]][col_idx] is the value
+    job_csvsort_mergesort(csv->csv_data, col_idx, idx_sort, 0, csv->rows - 2);
+
+    for (int i = 0; i < csv->rows-1; i++){
+        for (int j = 0; j < csv->cols; j++){
+            if (j > 0) fprintf(results, ",");
+            fprintf(results, "%s", csv->csv_data[idx_sort[i]][j]);
+        }
+        fprintf(results, "\n");
+    }
+
+    return 1;
 }
 
 int job_csvfilter(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
+    strip_whitespace(header);
+
     char filter_keyword[MAXFILEPATH];
     char filter_key[MAXFILEPATH];
 
