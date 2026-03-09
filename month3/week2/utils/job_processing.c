@@ -63,6 +63,29 @@ int determine_job_type(unsigned char buf[MAXBUFSIZE], int size){
     return type;
 }
 
+void strip_whitespace(char *string){
+    int len = strlen(string);
+    int i = 0;
+
+    for (i; i < len; i++){
+        if (string[i] != ' ') break;
+    }
+
+    memmove(string, string+i, len-i);
+}
+
+void extract_first_word(char *dest, char *orig){
+    int j = 0;
+    for (j; j < strlen(orig); j++){
+        if (orig[j] == ' ') break;
+    }
+    strncpy(dest, orig, j);
+    dest[j] = '\0';
+
+    memmove(orig, orig+j, MAXBUFSIZE-j);
+    strip_whitespace(orig);
+}
+
 /*
  * job_wordcount() -- count words in content string
  *
