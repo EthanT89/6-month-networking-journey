@@ -1,5 +1,20 @@
+/*
+ * parse_csv.c -- Two-pass CSV parser with chunked I/O and buffer boundary handling
+ *
+ * Parses CSV files into a 3D array structure (rows x columns x characters).
+ * First pass counts dimensions, second pass allocates memory and populates data.
+ * Handles quoted fields, embedded commas, and words split across read boundaries.
+ */
+
 #include "./parse_csv.h"
 
+/*
+ * get_size() -- count CSV dimensions (rows and columns) in first pass
+ *
+ * Reads file in chunks, counting newlines for rows and commas in first row
+ * for columns. Resets file position to start when done. Handles files
+ * without trailing newlines.
+ */
 void get_size(FILE *fptr, int *rows, int *cols){
     char content_read[MAXFILEREAD];
     int bytes_read;
@@ -30,6 +45,18 @@ void get_size(FILE *fptr, int *rows, int *cols){
     fseek(fptr, 0, SEEK_SET);   
 }
 
+/*
+ * populate_csv() -- second pass: parse and store CSV data with buffer boundary handling
+ *
+ * Reads file in chunks, handling:
+ * - Quoted fields (commas inside quotes don't delimit)
+ * - Words split across chunk boundaries (tempbuf carries partial words)
+ * - Space handling (spaces within fields, not just delimiters)
+ * - Final cells without trailing newline
+ *
+ * Uses tempbuf to preserve partial words when chunk ends mid-field.
+ * Example: "Port" at end of chunk combines with "land" in next chunk → "Portland"
+ */
 void populate_csv(struct CSV *csv, FILE *fptr){
     char content[MAXFILEREAD];
     int bytes_read;
@@ -45,7 +72,6 @@ void populate_csv(struct CSV *csv, FILE *fptr){
     char tempbuf[MAXFILEREAD];
     tempbuf[0] = '\0';
 
-    printf("starting population process\n");
     while ((bytes_read = fread(content, sizeof(char), MAXFILEREAD, fptr)) > 0){
         for (int i = 0; i < bytes_read; i++){
             if (content[i] == '"'){
@@ -87,8 +113,7 @@ void populate_csv(struct CSV *csv, FILE *fptr){
             }
 
             if (content[i] == ' '){
-                printf("here space\n");
-                if (reading_word) len_cur_word++;
+                if (reading_word) len_cur_word++;  // Spaces inside fields are part of the word
                 continue;
             }
 
@@ -99,15 +124,15 @@ void populate_csv(struct CSV *csv, FILE *fptr){
 
             len_cur_word++;
         }
+        // Save incomplete word to tempbuf for next chunk
         if (len_cur_word > 0){
-            printf("tempbuf issue\n");
             strncpy(tempbuf, content+start_index, len_cur_word);
             tempbuf[len_cur_word] = '\0';
             start_index = 0;
             len_cur_word = 0;
         }
     }
-    printf("out of loop\n");
+    // Handle final cell if file doesn't end with newline
     int buf_len = strlen(tempbuf);
     if ( buf_len > 0){
         csv->csv_data[row][col] = malloc(buf_len+1);
@@ -116,6 +141,16 @@ void populate_csv(struct CSV *csv, FILE *fptr){
     }
 }
 
+/*
+ * parse_csv() -- main entry point: allocate 3-level CSV structure and populate
+ *
+ * Three-level malloc:
+ *   Level 1: Array of row pointers
+ *   Level 2: Array of column pointers per row
+ *   Level 3: Individual cell strings (allocated in populate_csv)
+ *
+ * Access pattern: csv->csv_data[row][col] returns char*
+ */
 void parse_csv(struct CSV *csv, FILE *fptr){
     get_size(fptr, &csv->rows, &csv->cols);
     int rows = csv->rows;
@@ -127,9 +162,11 @@ void parse_csv(struct CSV *csv, FILE *fptr){
     }
 
     populate_csv(csv, fptr);
-    printf("populated csv\n");
 }
 
+/*
+ * print_csv() -- debug function to output CSV structure to stdout
+ */
 void print_csv(struct CSV *csv){
     printf("Rows: %d, Cols: %d\n", csv->rows, csv->cols);
     for (int i = 0; i < csv->rows; i++) {

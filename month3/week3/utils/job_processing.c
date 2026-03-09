@@ -63,6 +63,12 @@ int determine_job_type(unsigned char buf[MAXBUFSIZE], int size){
     return type;
 }
 
+/*
+ * strip_whitespace() -- remove leading spaces from string in-place
+ *
+ * Uses memmove (not strcpy) because source and dest overlap.
+ * Example: "   hello" → "hello"
+ */
 void strip_whitespace(char *string){
     int len = strlen(string);
     int i = 0;
@@ -74,6 +80,12 @@ void strip_whitespace(char *string){
     memmove(string, string+i, len-i);
 }
 
+/*
+ * extract_first_word() -- parse first space-delimited word from string
+ *
+ * Copies first word to dest, moves remainder to start of orig, strips leading spaces.
+ * Example: orig="City Portland" → dest="City", orig="Portland"
+ */
 void extract_first_word(char *dest, char *orig){
     int j = 0;
     for (j; j < strlen(orig); j++){
@@ -162,6 +174,12 @@ int job_capitalize(FILE *results, FILE *content){
     return 1;
 }
 
+/*
+ * job_csvstats() -- count CSV rows and columns, write to results
+ *
+ * Uses get_size() from parse_csv.c to count dimensions without full parsing.
+ * Output format: "N total entries, M columns"
+ */
 int job_csvstats(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
     int rows=0;
     int cols=0;
@@ -171,10 +189,16 @@ int job_csvstats(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE])
     return 1;
 }
 
+/*
+ * job_csvsort_mergesort_helper() -- merge two sorted index subarrays
+ *
+ * Merges idx_arr[left..middle] and idx_arr[middle+1..right] based on
+ * string comparison of csv[idx_arr[i]][col]. Sorts indices, not actual rows.
+ *
+ * Note: Uses strcmp (lexicographic), so "9" > "100" because '9' > '1'.
+ * Would need atoi() for proper numeric sorting.
+ */
 void job_csvsort_mergesort_helper(char ***csv, int col, int *idx_arr, int left, int middle, int right){
-    printf("merge sort helper called!\n");
-    printf("left: %d, right: %d, middle: %d\n", left, right, middle);
-
     int i = left;
     int j = middle+1;
 
@@ -198,34 +222,48 @@ void job_csvsort_mergesort_helper(char ***csv, int col, int *idx_arr, int left, 
         temp[temp_idx++] = idx_arr[i++];
     }
 
+    // Copy merged result back to idx_arr
     temp_idx = 0;
     for (int i = left; i <= right; i++){
         idx_arr[i] = temp[temp_idx++];
-        printf("%d - %s\n", idx_arr[i], csv[idx_arr[i]][col]);
     }
 }
 
+/*
+ * job_csvsort_mergesort() -- recursive merge sort on index array
+ *
+ * Classic divide-and-conquer: sort left half, sort right half, merge.
+ * Base case: single-element array is already sorted.
+ */
 void job_csvsort_mergesort(char ***csv, int col, int *idx_arr, int left, int right){
     int middle = (left + right) / 2;
 
-    if (left >= right) return; // 1-element subarray is already sorted
+    if (left >= right) return;
 
-    // recursively merge sort
+    // Recursively sort halves
     job_csvsort_mergesort(csv, col, idx_arr, left, middle);
     job_csvsort_mergesort(csv, col, idx_arr, middle+1, right);
 
-    // merge the two sorted lists
+    // Merge sorted halves
     job_csvsort_mergesort_helper(csv, col, idx_arr, left, middle, right);
 }
 
+/*
+ * job_csvsort() -- sort CSV by specified column using index array strategy
+ *
+ * Parses column name from header, finds column index in CSV header row,
+ * creates index array [1,2,3,...], sorts it based on column values,
+ * outputs rows in sorted index order.
+ *
+ * Index array strategy: Moves integers instead of entire rows (faster).
+ * Example: idx_sort=[3,1,2] outputs rows in order: csv[3], csv[1], csv[2]
+ */
 int job_csvsort(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
     strip_whitespace(header);
 
     char filter_keyword[MAXFILEPATH];
 
     extract_first_word(filter_keyword, header);
-
-    printf("keyword: -%s-\n", filter_keyword);
 
     struct CSV *csv = malloc(sizeof *csv);
     csv->cols = 0;
@@ -240,8 +278,9 @@ int job_csvsort(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
             break;
         }
     }
-    if (col_idx == -1) return -1;
+    if (col_idx == -1) return -1;  // Column not found
 
+    // Initialize index array [1, 2, 3, ..., rows-1] (skip header row 0)
     int idx_sort[csv->rows - 1];
     for (int i = 1; i < csv->rows; i++){
         idx_sort[i-1] = i;
@@ -253,10 +292,10 @@ int job_csvsort(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
     }
     fprintf(results, "\n");
 
-    // sort the idx_sort by col val (eg csv[idx_sort[i]][col_idx] > ...)
-    // access: csv->csv_data[idx_sort[i]][col_idx] --- thus, i is the 'key' and should be used for iteration, while csv->csv_data[idx_sort[i]][col_idx] is the value
+    // Sort index array by column values (lexicographic comparison)
     job_csvsort_mergesort(csv->csv_data, col_idx, idx_sort, 0, csv->rows - 2);
 
+    // Output rows in sorted index order
     for (int i = 0; i < csv->rows-1; i++){
         for (int j = 0; j < csv->cols; j++){
             if (j > 0) fprintf(results, ",");
@@ -268,17 +307,26 @@ int job_csvsort(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
     return 1;
 }
 
+/*
+ * job_csvfilter() -- filter CSV rows by column value match
+ *
+ * Header format: "csvfilter [column_name] [filter_value]"
+ * Example: "csvfilter City Portland" returns all rows where City="Portland"
+ *
+ * Algorithm:
+ * 1. Parse column name and filter value from header
+ * 2. Parse CSV structure
+ * 3. Find column index by searching header row
+ * 4. Output header + matching rows only
+ */
 int job_csvfilter(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
     strip_whitespace(header);
 
     char filter_keyword[MAXFILEPATH];
     char filter_key[MAXFILEPATH];
 
-    extract_first_word(filter_keyword, header);
-    extract_first_word(filter_key, header);
-
-    printf("keyword: -%s-\n", filter_keyword);
-    printf("key: -%s-\n", filter_key);
+    extract_first_word(filter_keyword, header);  // Column name
+    extract_first_word(filter_key, header);      // Value to match
 
     struct CSV *csv = malloc(sizeof *csv);
     csv->cols = 0;
@@ -293,14 +341,16 @@ int job_csvfilter(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]
             break;
         }
     }
-    if (col_idx == -1) return -1;
+    if (col_idx == -1) return -1;  // Column not found
     
+    // Write header row
     for (int j = 0; j < csv->cols; j++){
         if (j > 0) fprintf(results, ",");
         fprintf(results, "%s", csv->csv_data[0][j]);
     }
     fprintf(results, "\n");
 
+    // Write matching rows only
     for (int i = 0; i < csv->rows; i++){
         if (strcmp(csv->csv_data[i][col_idx], filter_key) == 0){
             for (int j = 0; j < csv->cols; j++){
