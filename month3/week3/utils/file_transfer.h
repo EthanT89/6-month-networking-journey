@@ -15,11 +15,18 @@
 
 #include "../common.h"
 #include "./epoll_helper.h"
+#include "./buffer_manipulation.h"
 
 long get_file_size(FILE *file);
 
-void receive_file(char *fname, int sockfd);
+void get_file_extension(char *fname, char *ext);
 
-int send_file(int sockfd, char *file_name);
+int receive_file_text_based(char *fname, int sockfd);
+
+int send_file_text_based(int sockfd, char *file_name);
+
+int receive_file_img_based(int sockfd, char *fname);
+
+int send_file_img_based(int sockfd, char *fname);
 
 #endif
