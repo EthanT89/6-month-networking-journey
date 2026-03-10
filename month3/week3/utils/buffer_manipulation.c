@@ -50,6 +50,17 @@ int unpacki32(unsigned char *buf){
     return i;
 }
 
+long int unpacki64(unsigned char *buf){
+    unsigned long int i2 = ((unsigned long int)buf[0]<<56) | ((unsigned long int)buf[1]<<48) | ((unsigned long int)buf[2]<<40) | ((unsigned long int)buf[3]<<32) | ((unsigned long int)buf[4]<<24) | ((unsigned long int)buf[5]<<16) | ((unsigned long int)buf[6]<<8) | buf[7];
+    long int i;
+
+    //change unsigned numbers to signed
+    if (i2 <= 0x7fffffffffffffffUL) {i = i2; }
+    else {i = -1 - (0x7fffffffffffffffL - i2);}
+
+    return i;
+}
+
 void prepend_i16(unsigned char buf[MAXBUFSIZE], int i16){
     // Shift existing content 2 bytes to the right
     memmove(buf + 2, buf, MAXBUFSIZE - 2);

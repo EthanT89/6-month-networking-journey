@@ -15,7 +15,7 @@ int unpacki16(unsigned char *buf);
 
 int unpacki32(unsigned char *buf);
 
-int unpacki64(unsigned char *buf);
+long int unpacki64(unsigned char *buf);
 
 void prepend_i16(unsigned char buf[MAXBUFSIZE], int i16);
 
