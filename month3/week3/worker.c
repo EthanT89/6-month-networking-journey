@@ -38,6 +38,7 @@ struct Self {
     int errcode;
 
     char dir[MAXFILEPATH];
+    char ext[MAXFILEEXT];
 
     int servfd;
 };
@@ -142,8 +143,10 @@ void handle_job_success(struct Self *self){
     packi16(update+offset, self->errcode); offset += 2;
     send(self->servfd, update, offset, 0);
 
-    sprintf(file_path, "%sresults.txt", self->dir);
-    send_file(self->servfd, file_path);
+    sprintf(file_path, "%sresults%s", self->dir, self->ext);
+
+    if (strcmp(self->ext, ".txt") == 0) send_file_text_based(self->servfd, file_path);
+    else if (strcmp(self->ext, ".jpg") == 0) send_file_img_based(self->servfd, file_path);
 }
 
 /*
@@ -162,17 +165,28 @@ void handle_job_assignment(struct Self *self){
     int spec_size = unpacki16(buf);
     memset(buf, 0, MAXBUFSIZE);
     read(self->servfd, buf, spec_size);
-    //printf("spec size: %d\n", spec_size);
-    //printf("buf: %s\n", buf);
+
+    char file_type[MAXBUFSIZE];
+    read(self->servfd, file_type, 2);
+    int file_type_id = unpacki16(file_type);
 
     char fname[MAXFILEPATH];
     strcpy(fname, self->dir);
-    strcat(fname, "content.txt");
-    
-    fclose(fopen(fname, "w"));
-    receive_file(fname, self->servfd);
 
-    int rv = process_job(buf, self->dir);
+    if (file_type_id == TXT_FILE){
+        strcpy(self->ext, ".txt");
+        strcat(fname, "content.txt");
+        fclose(fopen(fname, "w"));
+        receive_file_text_based(fname, self->servfd);
+    } else if (file_type_id == IMG_FILE){
+        strcpy(self->ext, ".jpg");
+        strcat(fname, "content.jpg");
+        fclose(fopen(fname, "wb"));
+        receive_file_img_based(self->servfd, fname);
+    }
+    
+
+    int rv = process_job(buf, self->dir, self->ext);
     if (rv <= -1){
         printf("errcode %d\n", rv);
         self->errcode = rv;

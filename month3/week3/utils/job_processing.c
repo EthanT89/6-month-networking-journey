@@ -60,6 +60,18 @@ int determine_job_type(unsigned char buf[MAXBUFSIZE], int size){
         type = JTYPE_CSVFILTER;
     }
 
+    if (strcmp(keyword, "scale") == 0){
+        type = JTYPE_SCALE;
+    }
+
+    if (strcmp(keyword, "resize") == 0){
+        type = JTYPE_RESIZE;
+    }
+
+    if (strcmp(keyword, "imgfilter") == 0){
+        type = JTYPE_FILTER;
+    }
+
     return type;
 }
 
@@ -363,13 +375,26 @@ int job_csvfilter(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]
 
     return 1;
 }
+int job_scale(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
+    printf("scaling!\n");
+}
+
+int job_resize(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
+    printf("resizing!\n");
+}
+
+int job_filter_img(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
+    printf("filtering!\n");
+}
+
+
 
 /*
  * process_job() -- route job to appropriate handler based on type
  *
  * Determines job type from content, calls appropriate job function, returns result or error code
  */
-int process_job(unsigned char header[MAXBUFSIZE], unsigned char dir[MAXFILEPATH]){
+int process_job(unsigned char header[MAXBUFSIZE], unsigned char dir[MAXFILEPATH], unsigned char ext[MAXFILEEXT]){
     int job_type = determine_job_type(header, strlen(header));
     int rv = 1;
 
@@ -379,46 +404,86 @@ int process_job(unsigned char header[MAXBUFSIZE], unsigned char dir[MAXFILEPATH]
 
     char fcontent[MAXFILEPATH];
     strcpy(fcontent, dir);
-    strcat(fcontent, "content.txt");
-    FILE *content_file = fopen(fcontent ,"r");
 
     char fresults[MAXFILEPATH];
     strcpy(fresults, dir);
-    strcat(fresults, "results.txt");
-    FILE *results_file = fopen(fresults ,"w");
-    
-    fclose(fopen(fresults, "w"));
 
-    if (job_type == JTYPE_WORDCOUNT){
-        rv = job_wordcount(results_file, content_file);
-    } 
-    
-    else if (job_type == JTYPE_CHARCOUNT){
-        rv = job_charcount(results_file, content_file);
+    if (strcmp(ext, ".txt") == 0){
+        printf("txt job.\n");
+        strcat(fresults, "results.txt");
+        fclose(fopen(fresults, "w"));
+        strcat(fcontent, "content.txt");
+        FILE *results_file = fopen(fresults ,"w");
+        FILE *content_file = fopen(fcontent ,"r");
+
+        if (job_type == JTYPE_WORDCOUNT){
+            FILE *results_file = fopen(fresults ,"w");
+            FILE *content_file = fopen(fcontent ,"r");
+            rv = job_wordcount(results_file, content_file);
+        } 
+        
+        else if (job_type == JTYPE_CHARCOUNT){
+            FILE *results_file = fopen(fresults ,"w");
+            FILE *content_file = fopen(fcontent ,"r");
+            rv = job_charcount(results_file, content_file);
+        }
+
+        else if (job_type == JTYPE_ECHO){
+            FILE *results_file = fopen(fresults ,"w");
+            FILE *content_file = fopen(fcontent ,"r");
+            rv = job_echo(results_file, content_file);
+        }
+
+        else if (job_type == JTYPE_CAPITALIZE){
+            FILE *results_file = fopen(fresults ,"w");
+            FILE *content_file = fopen(fcontent ,"r");
+            rv = job_capitalize(results_file, content_file);
+        }
+
+        else if (job_type == JTYPE_CSVFILTER){
+            FILE *results_file = fopen(fresults ,"w");
+            FILE *content_file = fopen(fcontent ,"r");
+            rv = job_csvfilter(results_file, content_file, header);
+        }
+
+        else if (job_type == JTYPE_CSVSORT){
+            FILE *results_file = fopen(fresults ,"w");
+            FILE *content_file = fopen(fcontent ,"r");
+            rv = job_csvsort(results_file, content_file, header);
+        }
+
+        else if (job_type == JTYPE_CSVSTATS){
+            FILE *results_file = fopen(fresults ,"w");
+            FILE *content_file = fopen(fcontent ,"r");
+            rv = job_csvstats(results_file, content_file, header);
+        }
+
+        fclose(results_file);
+        fclose(content_file);
+
+    } else if (strcmp(ext, ".jpg") == 0){
+        printf("img job.\n");
+        strcat(fresults, "results.jpg");
+        fclose(fopen(fresults, "wb"));
+        strcat(fcontent, "content.jpg");
+        FILE *results_file = fopen(fresults ,"wb");
+        FILE *content_file = fopen(fcontent ,"rb");
+
+        if (job_type == JTYPE_SCALE){
+            rv = job_scale(results_file, content_file, header);
+        }
+
+        else if (job_type == JTYPE_RESIZE){
+            rv = job_resize(results_file, content_file, header);
+        }
+
+        else if (job_type == JTYPE_FILTER){
+            rv = job_filter_img(results_file, content_file, header);
+        }
+
+        fclose(results_file);
+        fclose(content_file);
     }
-
-    else if (job_type == JTYPE_ECHO){
-        rv = job_echo(results_file, content_file);
-    }
-
-    else if (job_type == JTYPE_CAPITALIZE){
-        rv = job_capitalize(results_file, content_file);
-    }
-
-    else if (job_type == JTYPE_CSVFILTER){
-        rv = job_csvfilter(results_file, content_file, header);
-    }
-
-    else if (job_type == JTYPE_CSVSORT){
-        rv = job_csvsort(results_file, content_file, header);
-    }
-
-    else if (job_type == JTYPE_CSVSTATS){
-        rv = job_csvstats(results_file, content_file, header);
-    }
-
-    fclose(results_file);
-    fclose(content_file);
     return rv;
 }
 

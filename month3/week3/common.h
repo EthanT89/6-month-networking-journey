@@ -10,6 +10,7 @@
 #define MAXBUFSIZE  4096
 #define MAXFILEPATH 100
 #define MAXFILEREAD 100  // chunk size for streaming file reads
+#define MAXFILEEXT 5
 
 // worker status
 #define W_READY 0
@@ -53,6 +54,10 @@
 #define JTYPE_CSVSTATS 2504
 #define JTYPE_CSVSORT 2505
 #define JTYPE_CSVFILTER 2506
+// img jobs
+#define JTYPE_SCALE 2550
+#define JTYPE_RESIZE 2551
+#define JTYPE_FILTER 2552
 
 // worker error codes
 #define WERR_NONE 1

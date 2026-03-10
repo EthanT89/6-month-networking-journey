@@ -36,10 +36,16 @@ int job_csvsort(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]);
 
 int job_csvfilter(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]);
 
+int job_scale(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]);
+
+int job_resize(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]);
+
+int job_filter_img(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]);
+
 /* CSV sorting helpers (merge sort on index array) */
 void job_csvsort_mergesort(char ***csv, int col, int *idx_arr, int left, int right);
 void job_csvsort_mergesort_helper(char ***csv, int col, int *idx_arr, int left, int middle, int right);
 
-int process_job(unsigned char content[MAXBUFSIZE], unsigned char fname[MAXFILEPATH]);
+int process_job(unsigned char content[MAXBUFSIZE], unsigned char fname[MAXFILEPATH], unsigned char ext[MAXFILEEXT]);
 
 #endif
