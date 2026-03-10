@@ -112,6 +112,31 @@ int validate_cmd_metadata(char *argv, int cmd_id){
     return is_all_digits(argv);
 }
 
+int is_valid_txt_file(char ext[MAXFILEPATH]){
+    if (strcmp(ext, ".txt") == 0) return 1;
+    if (strcmp(ext, ".csv") == 0) return 1;
+    if (strcmp(ext, ".md") == 0) return 1;
+    if (strcmp(ext, ".json") == 0) return 1;
+    if (strcmp(ext, ".xml") == 0) return 1;
+    if (strcmp(ext, ".html") == 0) return 1;
+    if (strcmp(ext, ".htm") == 0) return 1;
+    if (strcmp(ext, ".log") == 0) return 1;
+    if (strcmp(ext, ".ini") == 0) return 1;
+    if (strcmp(ext, ".cfg") == 0) return 1;
+    if (strcmp(ext, ".conf") == 0) return 1;
+    if (strcmp(ext, ".yaml") == 0) return 1;
+    if (strcmp(ext, ".yml") == 0) return 1;
+    if (strcmp(ext, ".sh") == 0) return 1;
+    if (strcmp(ext, ".py") == 0) return 1;
+    if (strcmp(ext, ".js") == 0) return 1;
+    if (strcmp(ext, ".c") == 0) return 1;
+    if (strcmp(ext, ".h") == 0) return 1;
+    if (strcmp(ext, ".cpp") == 0) return 1;
+    if (strcmp(ext, ".java") == 0) return 1;
+    if (strcmp(ext, ".sql") == 0) return 1;
+    return -1;
+}
+
 int receive_results(int sockfd){
     unsigned char response[MAXBUFSIZE];
     memset(response, 0, MAXBUFSIZE);
@@ -123,7 +148,7 @@ int receive_results(int sockfd){
     if (flag > 1){
         printf("\nsee `./client_storage/results.txt` for results\n");
         recv(sockfd, response, flag, 0);
-        receive_file("./client_storage/results.txt", sockfd);
+        receive_file_text_based("./client_storage/results.txt", sockfd);
     } else {
         recv(sockfd, response, MAXBUFSIZE, 0);
         printf("%s\n", response);
@@ -188,7 +213,15 @@ int handle_job_metadata(int sockfd, int job_type, unsigned char *metadata){
         //printf("sending job id...\n");
         return handle_send_id(sockfd, metadata);
     }
-    return send_file(sockfd, metadata);
+
+    char file_ext[MAXFILEPATH];
+    get_file_extension(metadata, file_ext);
+
+    printf("extension - %s\n", file_ext);
+
+    if (is_valid_txt_file(file_ext) == 1) return send_file_text_based(sockfd, metadata);
+    printf("img file\n");
+    return send_file_img_based(sockfd, metadata);
 }
 
 int main(int argc, char **argv){
