@@ -34,6 +34,10 @@
 #define JOBRESULTID 707
 #define JOBID 606
 
+// file types
+#define IMG_FILE 755
+#define TXT_FILE 756
+
 // worker packet types
 #define WPACKET_CONNECTED 901
 #define WPACKET_NEWJOB 902

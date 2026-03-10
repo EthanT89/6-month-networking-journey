@@ -123,9 +123,8 @@ int get_listening_socket(unsigned char *port){
  *
  * Sends WPACKET_NEWJOB packet with job_id and metadata. Returns worker ID on success, -1 if no workers available.
  */
-int assign_to_worker(struct Server *server, unsigned char metadata[MAXJOBMETADATASIZE], int job_id){
+int assign_to_worker(struct Server *server, unsigned char metadata[MAXJOBMETADATASIZE], struct Job *job){
     struct Worker *worker = get_available_worker(server->workers);
-
     if (worker == NULL){
         return -1;
     }
@@ -135,18 +134,21 @@ int assign_to_worker(struct Server *server, unsigned char metadata[MAXJOBMETADAT
     int offset = 0;
     packi16(job_packet+offset, APPID); offset += 2;
     packi16(job_packet+offset, WPACKET_NEWJOB); offset += 2;
-    packi16(job_packet+offset, job_id); offset += 2;
+    packi16(job_packet+offset, job->job_id); offset += 2;
     packi16(job_packet+offset, strlen(metadata)); offset += 2;
     memcpy(job_packet+offset, metadata, MAXJOBMETADATASIZE); offset += strlen(metadata);
 
-    char fname[MAXFILEPATH];
-    sprintf(fname, "./server_storage/job-%d.txt", job_id);
+    char ext[MAXFILEPATH];
 
-    printf("assigning job %d to worker %d\n\n", job_id, worker->id);
+    printf("assigning job %d to worker %d\n\n", job->job_id, worker->id);
     send(worker->id, job_packet, offset, 0);
-    send_file(worker->id, fname);
 
-    worker->cur_job_id = job_id;
+    get_file_extension(job->file_path, ext);
+
+    if (strcmp(ext, ".txt") == 0) send_file_text_based(worker->id, job->file_path);
+    if (strcmp(ext, ".jpg") == 0) send_file_img_based(worker->id, job->file_path);
+
+    worker->cur_job_id = job->job_id;
     worker->status = W_BUSY;
     return worker->id;
 }
@@ -187,9 +189,21 @@ void get_status_msg(unsigned char msg[MAXBUFSIZE], struct Server *server, int jo
 
 void handle_file_transfer(struct Job *job, int sockfd){
     char fname[MAXFILEPATH];
-    sprintf(fname, "./server_storage/job-%d.txt", job->job_id);
- 
-    receive_file(fname, sockfd);
+    char buf[MAXBUFSIZE];
+
+    read(sockfd, buf, 2);
+    int file_type = unpacki16(buf);
+    printf("file type: %d\n", file_type);
+
+    if (file_type == TXT_FILE){
+        sprintf(fname, "./server_storage/job-%d.txt", job->job_id);
+        receive_file_text_based(fname, sockfd);
+    } else if (file_type == IMG_FILE) {
+        sprintf(fname, "./server_storage/job-%d.jpg", job->job_id);
+        receive_file_img_based(sockfd, fname);
+    }
+
+    strcpy(job->file_path, fname);
 }
 
 void handle_job_spec(struct Job *job, int sockfd){
@@ -241,7 +255,7 @@ void check_queue(struct Server *server){
     if (job == NULL) return;
     job->time_start = get_time_ms();
 
-    int rv = assign_to_worker(server, job->job_spec, job_id);
+    int rv = assign_to_worker(server, job->job_spec, job);
     printf("job spec - %s\n", job->job_spec);
     job->worker_id = rv;
     job->status = J_IN_PROGRESS;
@@ -304,6 +318,7 @@ void fail_job(struct Job *job, struct Stats *stats){
 void retry_job(struct Server *server, struct Job *job){
     if (job->retry_ct++ >= 3){
         fail_job(job, server->stats);
+        return;
     }
 
     add_to_queue(server->queue, job->job_id);
@@ -384,7 +399,7 @@ void receive_worker_results(struct Worker *worker, struct Job *job){
     memset(fname, 0, MAXFILEPATH);
     sprintf(fname, "./server_storage/job-%d.txt", worker->cur_job_id);
 
-    receive_file(fname, worker->id);
+    receive_file_text_based(fname, worker->id);
     strcpy(job->file_path, fname);
 }
 
@@ -501,7 +516,7 @@ void handle_client_request(struct Server *server){
 
     send(new_fd, return_msg, strlen(return_msg+2)+2, 0);
 
-    if (strncmp(return_msg+2, "file", 4) == 0) send_file(new_fd, return_msg+6);
+    if (strncmp(return_msg+2, "file", 4) == 0) send_file_text_based(new_fd, return_msg+6);
     close(new_fd);
 
     printf("\n");
@@ -627,7 +642,7 @@ struct Server *setup_server_struct(int cfd, int wfd, int pfd){
  * del_storage() -- clear the `worker_storage` directory content. Force wipes the job history. 
  */
 void del_storage(){
-    if (system("cd /home/ethan/network-learning/month3/week2/server_storage && rm -rf *") == 0) {
+    if (system("cd /home/ethan/network-learning/month3/week3/server_storage && rm -rf *") == 0) {
         printf("All files deleted successfully.\n");
     } else {
         printf("Failed to delete files.\n");
