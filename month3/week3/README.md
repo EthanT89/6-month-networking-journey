@@ -65,4 +65,4 @@ client: `gcc client.c ./utils/buffer_manipulation.c ./utils/file_transfer.c ./ut
 
 server: `gcc server.c ./utils/workers.c ./utils/buffer_manipulation.c ./utils/time_custom.c ./utils/jobs.c ./utils/job_queue.c ./utils/file_transfer.c ./utils/epoll_helper.c -o server`
 
-worker: `gcc worker.c ./utils/buffer_manipulation.c ./utils/job_processing.c ./utils/file_transfer.c ./utils/epoll_helper.c ./utils/csv/parse_csv.c -o worker`
+worker: `gcc `Wand-config --cflags --cppflags` worker.c ./utils/buffer_manipulation.c ./utils/job_processing.c ./utils/file_transfer.c ./utils/epoll_helper.c ./utils/csv/parse_csv.c -o worker `Wand-config --ldflags --libs``
