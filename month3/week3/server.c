@@ -118,6 +118,20 @@ int get_listening_socket(unsigned char *port){
     return sockfd;
 }
 
+int get_file_type_id(char *fname){
+    char ext[MAXFILEEXT];
+
+    get_file_extension(fname, ext);
+
+    if (strcmp(ext, ".txt") == 0){
+        return TXT_FILE;
+    }
+    if (strcmp(ext, ".jpg") == 0){
+        return IMG_FILE;
+    }
+    return -1;
+}
+
 /*
  * assign_to_worker() -- find available worker and assign job to them
  *
@@ -156,7 +170,7 @@ int assign_to_worker(struct Server *server, unsigned char metadata[MAXJOBMETADAT
 /*
  * get_status_msg() -- populate msg buffer with human-readable job status for given job_id
  */
-void get_status_msg(unsigned char msg[MAXBUFSIZE], struct Server *server, int job_id){
+void get_status_msg(unsigned char msg[MAXBUFSIZE-10], struct Server *server, int job_id){
     struct Job *job = get_job_by_id(server->jobs, job_id);
 
     int status_id = -1;
@@ -224,11 +238,18 @@ void handle_job_spec(struct Job *job, int sockfd){
 /*
  * handle_job_submission() -- create new job from metadata and add to queue
  */
-void handle_job_submission(struct Server *server, unsigned char return_msg[MAXBUFSIZE], int sockfd){
+void handle_job_submission(struct Server *server, int sockfd){
+    char results[MAXBUFSIZE];
+    memset(results, 0, MAXBUFSIZE);
+    int offset = 0;
+
+    packi16(results, SERVER_MSG); offset += 2;
+
     struct Job *job = create_blank_job();
     job->job_id = server->job_id_ct++;
     job->job_type = 0; // TODO: determine job types
     job->status = J_IN_QUEUE;
+
     strncpy(job->results, "Job in progress.", 17);
 
     handle_job_spec(job, sockfd);
@@ -237,7 +258,9 @@ void handle_job_submission(struct Server *server, unsigned char return_msg[MAXBU
     add_job(server->jobs, job);
     add_to_queue(server->queue, job->job_id);
     server->stats->jobs_in_queue++;
-    sprintf(return_msg, "Job ID: %d\n", job->job_id);
+    sprintf(results+offset, "Job ID: %d\n", job->job_id); offset += strlen(results+offset);
+
+    send(sockfd, results, offset, 0);
 }
 
 /*
@@ -277,28 +300,50 @@ int handle_job_id_packet(int sockfd){
 /*
  * handle_job_status() -- retrieve and return status message for requested job_id
  */
-void handle_job_status(struct Server *server, unsigned char return_msg[MAXBUFSIZE], int sockfd){
+void handle_job_status(struct Server *server, int sockfd){
+    char return_msg[MAXBUFSIZE];
+    memset(return_msg, 0, MAXBUFSIZE);
+    int offset = 0;
+
+    packi16(return_msg, SERVER_MSG); offset += 2;
+
     int job_id = handle_job_id_packet(sockfd);
-    get_status_msg(return_msg, server, job_id);
+    get_status_msg(return_msg+offset, server, job_id); offset += strlen(return_msg+offset);
+
+    send(sockfd, return_msg, offset, 0);
 }
 
 /*
  * handle_job_get_results() -- retrieve and return job results for requested job_id
  */
-void handle_job_get_results(struct Server *server, unsigned char return_msg[MAXBUFSIZE], int sockfd){
+void handle_job_get_results(struct Server *server, int sockfd){
+    char return_msg[MAXBUFSIZE];
+    memset(return_msg, 0, MAXBUFSIZE);
+    int offset = 0;
+
     int job_id = handle_job_id_packet(sockfd);
     int status = get_job_status(server->jobs, job_id);
     struct Job *job = get_job_by_id(server->jobs, job_id);
 
     if (status == J_SUCCESS){
-        printf("successs\n");
-        strncpy(return_msg+2, "file", MAXBUFSIZE);
-        strcat(return_msg+2, job->file_path);
-        packi16(return_msg, strlen(return_msg+2));
+        packi16(return_msg, SERVER_FILE_TRANSFER); offset += 2;
+        send(sockfd, return_msg, offset, 0);
+        
+        int file_type = get_file_type_id(job->file_path);
+
+        if (file_type == TXT_FILE){
+            send_file_text_based(sockfd, job->file_path);
+            return;
+        }
+        if (file_type == IMG_FILE){
+            send_file_img_based(sockfd, job->file_path);
+            return;
+        }
+
     } else {
-        packi16(return_msg, 1);
-        printf("job not found or incomplete: %d\n", status);
-        get_status_msg(return_msg+2, server, job_id);
+        packi16(return_msg, SERVER_MSG); offset += 2;
+        get_status_msg(return_msg+offset, server, job_id); offset += strlen(return_msg+offset);
+        send(sockfd, return_msg, offset, 0);
     }
 }
 
@@ -397,10 +442,23 @@ void handle_worker_data(struct Server *server, int worker_fd){
 void receive_worker_results(struct Worker *worker, struct Job *job){
     char fname[MAXFILEPATH];
     memset(fname, 0, MAXFILEPATH);
-    sprintf(fname, "./server_storage/job-%d.txt", worker->cur_job_id);
 
-    receive_file_text_based(fname, worker->id);
-    strcpy(job->file_path, fname);
+    get_file_extension(job->file_path, fname);
+
+    char buf[MAXBUFSIZE];
+    memset(buf, 0, MAXBUFSIZE);
+
+    read(worker->id, buf, 2);
+    int file_type = unpacki16(buf);
+    printf("file type: %d\n", file_type);
+    
+    if (strcmp(fname, ".txt") == 0){
+        receive_file_text_based(job->file_path, worker->id);
+    } else if (strcmp(fname, ".jpg") == 0){
+        receive_file_img_based(worker->id, job->file_path);
+    }
+
+    // strcpy(job->file_path, fname);
 }
 
 /*
@@ -502,23 +560,19 @@ void handle_client_request(struct Server *server){
 
     if (cmd_type == JOBSUBMITID){
         packi16(return_msg, 0);
-        handle_job_submission(server, return_msg+2, new_fd);
+        handle_job_submission(server, new_fd);
     }
 
     if (cmd_type == JOBSTATUSID){
         packi16(return_msg, 0);
-        handle_job_status(server, return_msg+2, new_fd);
+        handle_job_status(server, new_fd);
     }
 
     if (cmd_type == JOBRESULTID){
-        handle_job_get_results(server, return_msg, new_fd);
+        handle_job_get_results(server, new_fd);
     }
-
-    send(new_fd, return_msg, strlen(return_msg+2)+2, 0);
-
-    if (strncmp(return_msg+2, "file", 4) == 0) send_file_text_based(new_fd, return_msg+6);
+    
     close(new_fd);
-
     printf("\n");
 }
 

@@ -39,6 +39,10 @@
 #define IMG_FILE 755
 #define TXT_FILE 756
 
+// server response types
+#define SERVER_MSG 9090
+#define SERVER_FILE_TRANSFER 9091
+
 // worker packet types
 #define WPACKET_CONNECTED 901
 #define WPACKET_NEWJOB 902

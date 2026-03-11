@@ -142,17 +142,28 @@ int receive_results(int sockfd){
     memset(response, 0, MAXBUFSIZE);
 
     recv(sockfd, response, 2, 0);
-    int flag = unpacki16(response);
+    int serv_response_type = unpacki16(response);
+
     memset(response, 0, MAXBUFSIZE);
 
-    if (flag > 1){
-        printf("\nsee `./client_storage/results.txt` for results\n");
-        recv(sockfd, response, flag, 0);
-        receive_file_text_based("./client_storage/results.txt", sockfd);
-    } else {
+    if (serv_response_type == SERVER_FILE_TRANSFER){
+        printf("file transfer\n");
+
+        recv(sockfd, response, 2, 0);
+        int file_type = unpacki16(response);
+
+        memset(response, 0, MAXBUFSIZE);
+        if (file_type == IMG_FILE){
+            receive_file_img_based(sockfd, "./client_storage/results.jpg");
+        }
+
+        else if (file_type == TXT_FILE){
+            receive_file_text_based("./client_storage/results.txt", sockfd);
+        }
+    } else if (serv_response_type == SERVER_MSG) {
+        printf("server message\n");
         recv(sockfd, response, MAXBUFSIZE, 0);
         printf("%s\n", response);
-        memset(response, 0, MAXBUFSIZE);
     }
 }
 
