@@ -14,7 +14,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <magick/ImageMagick.h>
 
 // custom imports
 #include "./common.h"

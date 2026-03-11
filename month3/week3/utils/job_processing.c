@@ -375,9 +375,36 @@ int job_csvfilter(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]
 
     return 1;
 }
-int job_scale(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
-    printf("scaling!\n");
-    return 0;
+int job_scale(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path){
+    printf("scaling\n");
+    MagickWand *magick_wand;
+    MagickBooleanType status;
+
+    MagickWandGenesis();
+    magick_wand = NewMagickWand();
+
+    status = MagickReadImage(magick_wand, img_path);
+    if (status == MagickFalse){
+        fprintf(stderr, "Error reading file %s\n", img_path);
+        return -1;
+    }
+
+    status = MagickResizeImage(magick_wand, 500, 500, LanczosFilter, 1.0);
+    if (status == MagickFalse){
+        fprintf(stderr, "Failed to resize image %s\n", img_path);
+        return -1;
+    }
+
+    status = MagickWriteImage(magick_wand, output_path);
+    if (status == MagickFalse) {
+        fprintf(stderr, "Error writing image\n");
+        return 1;
+    }
+
+    magick_wand = DestroyMagickWand(magick_wand);
+    MagickWandTerminus();
+
+    return 1;
 }
 
 int job_resize(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
@@ -473,7 +500,7 @@ int process_job(unsigned char header[MAXBUFSIZE], char dir[MAXFILEPATH], char ex
         FILE *content_file = fopen(fcontent ,"rb");
 
         if (job_type == JTYPE_SCALE){
-            rv = job_scale(results_file, content_file, header);
+            rv = job_scale(header, fcontent, fresults);
         }
 
         else if (job_type == JTYPE_RESIZE){

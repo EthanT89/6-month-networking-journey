@@ -61,8 +61,22 @@ Same infrastructure as Week 10, but with CSV-specific jobs:
 
 # Compiling
 
-client: `gcc client.c ./utils/buffer_manipulation.c ./utils/file_transfer.c ./utils/epoll_helper.c -o client`
+## client: `gcc client.c ./utils/buffer_manipulation.c ./utils/file_transfer.c ./utils/epoll_helper.c -o client`
 
-server: `gcc server.c ./utils/workers.c ./utils/buffer_manipulation.c ./utils/time_custom.c ./utils/jobs.c ./utils/job_queue.c ./utils/file_transfer.c ./utils/epoll_helper.c -o server`
+### ex usage: 
 
-worker: `gcc `Wand-config --cflags --cppflags` worker.c ./utils/buffer_manipulation.c ./utils/job_processing.c ./utils/file_transfer.c ./utils/epoll_helper.c ./utils/csv/parse_csv.c -o worker `Wand-config --ldflags --libs``
+`./client submit "scale" "./client_storage/space.jpg"`
+
+## server: `gcc server.c ./utils/workers.c ./utils/buffer_manipulation.c ./utils/time_custom.c ./utils/jobs.c ./utils/job_queue.c ./utils/file_transfer.c ./utils/epoll_helper.c -o server`
+
+### ex usage: 
+
+`./server`
+
+## worker: `gcc `Wand-config --cflags --cppflags` worker.c ./utils/buffer_manipulation.c ./utils/job_processing.c ./utils/file_transfer.c ./utils/epoll_helper.c ./utils/csv/parse_csv.c -o worker `Wand-config --ldflags --libs``
+
+`gcc $(pkg-config --cflags MagickCore MagickWand) worker.c ./utils/buffer_manipulation.c ./utils/job_processing.c ./utils/file_transfer.c ./utils/epoll_helper.c ./utils/csv/parse_csv.c -o worker $(pkg-config --libs MagickCore MagickWand)`
+
+### ex usage: 
+
+`./worker`

@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
+#include <wand/MagickWand.h>
 
 int determine_job_type(unsigned char buf[MAXBUFSIZE], int size);
 
@@ -36,7 +37,7 @@ int job_csvsort(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]);
 
 int job_csvfilter(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]);
 
-int job_scale(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]);
+int job_scale(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path);
 
 int job_resize(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]);
 
