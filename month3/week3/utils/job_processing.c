@@ -389,7 +389,21 @@ int job_scale(unsigned char header[MAXBUFSIZE], char* img_path, char *output_pat
         return -1;
     }
 
-    status = MagickResizeImage(magick_wand, 500, 500, LanczosFilter, 1.0);
+    int img_width = MagickGetImageWidth(magick_wand);
+    int img_height = MagickGetImageHeight(magick_wand);
+
+    printf("img dimensions: %d x %d (wxh)\n", img_width, img_height);
+
+    char factor_c[MAXFILEPATH];
+    strip_whitespace(header);
+    extract_first_word(factor_c, header);
+
+    char *endptr;
+    double scale_factor = strtod(factor_c, &endptr);
+
+    printf("scale factor: %f\n", scale_factor);
+
+    status = MagickResizeImage(magick_wand, img_width*scale_factor, img_height*scale_factor, LanczosFilter, 1.0);
     if (status == MagickFalse){
         fprintf(stderr, "Failed to resize image %s\n", img_path);
         return -1;
