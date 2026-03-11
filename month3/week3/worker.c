@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <magick/ImageMagick.h>
 
 // custom imports
 #include "./common.h"
@@ -134,7 +135,7 @@ void handle_job_success(struct Self *self){
     self->errcode = 1;
     self->status = W_SUCCESS;
     unsigned char update[MAXBUFSIZE];
-    unsigned char file_path[MAXFILEPATH+15];
+    char file_path[MAXFILEPATH+15];
     int offset = 0;
 
     packi16(update+offset, APPID); offset += 2;
@@ -160,14 +161,14 @@ void handle_job_assignment(struct Self *self){
 
     unsigned char buf[MAXBUFSIZE];
     memset(buf, 0, MAXBUFSIZE);
-    read(self->servfd, buf, 2);
+    if (read(self->servfd, buf, 2) <= 0) return;
 
     int spec_size = unpacki16(buf);
     memset(buf, 0, MAXBUFSIZE);
-    read(self->servfd, buf, spec_size);
+    if (read(self->servfd, buf, spec_size) <= 0) return;
 
-    char file_type[MAXBUFSIZE];
-    read(self->servfd, file_type, 2);
+    unsigned char file_type[MAXBUFSIZE];
+    if (read(self->servfd, file_type, 2) <= 0) return;
     int file_type_id = unpacki16(file_type);
 
     char fname[MAXFILEPATH];
@@ -232,7 +233,7 @@ void handle_server_data(struct Self *self, unsigned char buf[MAXBUFSIZE]){
 
     if (packetid == WPACKET_NEWJOB){
         printf("received new job. processing...\n");
-        int jobid = unpacki16(buf+offset); offset += 2;
+        (void)unpacki16(buf+offset); offset += 2;
         handle_job_assignment(self);
     }
 
@@ -273,7 +274,7 @@ int main(){
     fflush(stdout);
 
     sprintf(self->dir, "./worker_storage/worker-%d/", self->id);
-    int status = mkdir(self->dir, 0755);
+    (void)mkdir(self->dir, 0755);
 
     struct epoll_event events[MAXEPOLLEVENTS];
     while (1) {

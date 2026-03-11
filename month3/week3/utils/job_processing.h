@@ -46,6 +46,6 @@ int job_filter_img(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE
 void job_csvsort_mergesort(char ***csv, int col, int *idx_arr, int left, int right);
 void job_csvsort_mergesort_helper(char ***csv, int col, int *idx_arr, int left, int middle, int right);
 
-int process_job(unsigned char content[MAXBUFSIZE], unsigned char fname[MAXFILEPATH], unsigned char ext[MAXFILEEXT]);
+int process_job(unsigned char content[MAXBUFSIZE], char fname[MAXFILEPATH], char ext[MAXFILEEXT]);
 
 #endif

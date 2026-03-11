@@ -11,17 +11,17 @@
  * content to start of buffer, and returns the corresponding JTYPE constant
  */
 int determine_job_type(unsigned char buf[MAXBUFSIZE], int size){
-    unsigned char keyword[size];
+    char keyword[size];
     int i = 0;
     int type = -1;
 
-    for (i; i < size; i++){
+    for (; i < size; i++){
         if (buf[i] == ' '){
             break;
         }
     }
 
-    strncpy(keyword, buf, i);
+    strncpy(keyword, (char *)buf, i);
     keyword[i] = '\0';
 
     i++;
@@ -85,7 +85,7 @@ void strip_whitespace(char *string){
     int len = strlen(string);
     int i = 0;
 
-    for (i; i < len; i++){
+    for (; i < len; i++){
         if (string[i] != ' ') break;
     }
 
@@ -100,7 +100,7 @@ void strip_whitespace(char *string){
  */
 void extract_first_word(char *dest, char *orig){
     int j = 0;
-    for (j; j < strlen(orig); j++){
+    for (; j < strlen(orig); j++){
         if (orig[j] == ' ') break;
     }
     strncpy(dest, orig, j);
@@ -271,11 +271,11 @@ void job_csvsort_mergesort(char ***csv, int col, int *idx_arr, int left, int rig
  * Example: idx_sort=[3,1,2] outputs rows in order: csv[3], csv[1], csv[2]
  */
 int job_csvsort(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
-    strip_whitespace(header);
+    strip_whitespace((char *)header);
 
     char filter_keyword[MAXFILEPATH];
 
-    extract_first_word(filter_keyword, header);
+    extract_first_word(filter_keyword, (char *)header);
 
     struct CSV *csv = malloc(sizeof *csv);
     csv->cols = 0;
@@ -332,13 +332,13 @@ int job_csvsort(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
  * 4. Output header + matching rows only
  */
 int job_csvfilter(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
-    strip_whitespace(header);
+    strip_whitespace((char *)header);
 
     char filter_keyword[MAXFILEPATH];
     char filter_key[MAXFILEPATH];
 
-    extract_first_word(filter_keyword, header);  // Column name
-    extract_first_word(filter_key, header);      // Value to match
+    extract_first_word(filter_keyword, (char *)header);  // Column name
+    extract_first_word(filter_key, (char *)header);      // Value to match
 
     struct CSV *csv = malloc(sizeof *csv);
     csv->cols = 0;
@@ -377,14 +377,17 @@ int job_csvfilter(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]
 }
 int job_scale(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
     printf("scaling!\n");
+    return 0;
 }
 
 int job_resize(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
     printf("resizing!\n");
+    return 0;
 }
 
 int job_filter_img(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
     printf("filtering!\n");
+    return 0;
 }
 
 
@@ -394,8 +397,8 @@ int job_filter_img(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE
  *
  * Determines job type from content, calls appropriate job function, returns result or error code
  */
-int process_job(unsigned char header[MAXBUFSIZE], unsigned char dir[MAXFILEPATH], unsigned char ext[MAXFILEEXT]){
-    int job_type = determine_job_type(header, strlen(header));
+int process_job(unsigned char header[MAXBUFSIZE], char dir[MAXFILEPATH], char ext[MAXFILEEXT]){
+    int job_type = determine_job_type(header, strlen((char *)header));
     int rv = 1;
 
     if (job_type == -1){

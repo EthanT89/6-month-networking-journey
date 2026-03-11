@@ -92,10 +92,10 @@ void populate_csv(struct CSV *csv, FILE *fptr){
                 csv->csv_data[row][col] = malloc(len_cur_word+buf_len+1);
 
                 if (buf_len > 0){
-                    strncpy(csv->csv_data[row][col], tempbuf, buf_len);
+                    memcpy(csv->csv_data[row][col], tempbuf, buf_len);
                 }
 
-                strncpy(csv->csv_data[row][col]+buf_len, content+start_index, len_cur_word);
+                memcpy(csv->csv_data[row][col]+buf_len, content+start_index, len_cur_word);
                 csv->csv_data[row][col][len_cur_word+buf_len] = '\0';
 
                 len_cur_word = 0;
@@ -126,7 +126,7 @@ void populate_csv(struct CSV *csv, FILE *fptr){
         }
         // Save incomplete word to tempbuf for next chunk
         if (len_cur_word > 0){
-            strncpy(tempbuf, content+start_index, len_cur_word);
+            memcpy(tempbuf, content+start_index, len_cur_word);
             tempbuf[len_cur_word] = '\0';
             start_index = 0;
             len_cur_word = 0;
@@ -136,7 +136,7 @@ void populate_csv(struct CSV *csv, FILE *fptr){
     int buf_len = strlen(tempbuf);
     if ( buf_len > 0){
         csv->csv_data[row][col] = malloc(buf_len+1);
-        strncpy(csv->csv_data[row][col], tempbuf, buf_len);
+        memcpy(csv->csv_data[row][col], tempbuf, buf_len);
         csv->csv_data[row][col][buf_len] = '\0';
     }
 }

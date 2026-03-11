@@ -19,7 +19,7 @@ void get_file_extension(char *fname, char *ext){
     int namelen = strlen(fname);
     int i = namelen-1;
 
-    for (i; i >= 0; i--){
+    for (; i >= 0; i--){
         if (fname[i] == '.') break;
     }
 
@@ -38,7 +38,7 @@ int receive_file_text_based(char *fname, int sockfd){
     int epollfd = create_epoll();
     struct epoll_event events[1];
 
-    char buf[MAXBUFSIZE];
+    unsigned char buf[MAXBUFSIZE];
     add_epoll_fd(epollfd, sockfd);
 
     fclose(fopen(fname, "w"));
@@ -70,7 +70,7 @@ int receive_file_text_based(char *fname, int sockfd){
                 FILE *fptr = fopen(fname ,"a");
 
                 total_bytes += bytes_read;
-                fprintf(fptr, "%s", buf);
+                fprintf(fptr, "%s", (char *)buf);
                 printf("total bytes received: %d - expected: %d\n", total_bytes, expected_bytes);   
                 fclose(fptr); // Always close the file
                 memset(buf, 0, MAXBUFSIZE);
@@ -89,7 +89,7 @@ int send_file_text_based(int sockfd, char *file_name){
 	printf("\nSending %s...\n", file_name);
     FILE *fs = fopen(file_name, "r");
     long file_size = get_file_size(fs);
-    char sdbuf[MAXBUFSIZE]; 
+    unsigned char sdbuf[MAXBUFSIZE]; 
 
     if(fs == NULL){
         printf("ERROR: File %s not found.\n", file_name);
@@ -142,7 +142,7 @@ int receive_file_img_based(int sockfd, char *fname){
         return -1;
     }
 
-    char buf[MAXBUFSIZE];
+    unsigned char buf[MAXBUFSIZE];
     add_epoll_fd(epollfd, sockfd);
 
     fclose(fopen(fname, "wb"));
@@ -201,7 +201,7 @@ int send_file_img_based(int sockfd, char *fname){
 
     long file_size = get_file_size(fs);
     printf("file size: %ld\n", file_size);
-    char sdbuf[MAXBUFSIZE];
+    unsigned char sdbuf[MAXBUFSIZE];
 
     if (strncmp(fname + (strlen(fname) - 3), "jpg", 3) > 0 ){
         printf("file extension invalid. IS: .%s NOT: .jpg\n", fname + (strlen(fname) - 3));
