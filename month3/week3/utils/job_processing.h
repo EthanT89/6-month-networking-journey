@@ -39,9 +39,9 @@ int job_csvfilter(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]
 
 int job_scale(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path);
 
-int job_resize(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]);
+int job_resize(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path);
 
-int job_filter_img(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]);
+int job_filter_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path);
 
 /* CSV sorting helpers (merge sort on index array) */
 void job_csvsort_mergesort(char ***csv, int col, int *idx_arr, int left, int right);

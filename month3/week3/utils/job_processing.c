@@ -421,12 +421,65 @@ int job_scale(unsigned char header[MAXBUFSIZE], char* img_path, char *output_pat
     return 1;
 }
 
-int job_resize(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
-    printf("resizing!\n");
-    return 0;
+int job_resize(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path){
+    printf("resizing\n");
+    MagickWand *magick_wand;
+    MagickBooleanType status;
+
+    MagickWandGenesis();
+    magick_wand = NewMagickWand();
+
+    status = MagickReadImage(magick_wand, img_path);
+    if (status == MagickFalse){
+        fprintf(stderr, "Error reading file %s\n", img_path);
+        return -1;
+    }
+
+    int img_width = MagickGetImageWidth(magick_wand);
+    int img_height = MagickGetImageHeight(magick_wand);
+
+    printf("img dimensions: %d x %d (wxh)\n", img_width, img_height);
+
+    char new_dimension[MAXFILEPATH];
+    strip_whitespace(header);
+    extract_first_word(new_dimension, header);
+
+    int i = 0;
+    for (; i < strlen(new_dimension); i++){
+        if (new_dimension[i] == 'x'){
+            new_dimension[i] == '\0';
+            i++;
+            break;
+        }
+    }
+
+    // 1234x1234
+
+    char *endptr;
+    double new_width = strtod(new_dimension, &endptr);
+    double new_height = strtod(new_dimension+i, &endptr);
+
+    printf("new dimensions: %fx%f\n", new_width, new_height);
+
+    status = MagickResizeImage(magick_wand, new_width, new_height, LanczosFilter, 1.0);
+    if (status == MagickFalse){
+        fprintf(stderr, "Failed to resize image %s\n", img_path);
+        return -1;
+    }
+
+    status = MagickWriteImage(magick_wand, output_path);
+    if (status == MagickFalse) {
+        fprintf(stderr, "Error writing image\n");
+        return 1;
+    }
+
+    magick_wand = DestroyMagickWand(magick_wand);
+    MagickWandTerminus();
+
+    return 1;
 }
 
-int job_filter_img(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]){
+int job_filter_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path){
     printf("filtering!\n");
     return 0;
 }
@@ -518,11 +571,11 @@ int process_job(unsigned char header[MAXBUFSIZE], char dir[MAXFILEPATH], char ex
         }
 
         else if (job_type == JTYPE_RESIZE){
-            rv = job_resize(results_file, content_file, header);
+            rv = job_resize(header, fcontent, fresults);
         }
 
         else if (job_type == JTYPE_FILTER){
-            rv = job_filter_img(results_file, content_file, header);
+            rv = job_filter_img(header, fcontent, fresults);
         }
 
         fclose(results_file);
