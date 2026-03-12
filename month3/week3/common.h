@@ -35,11 +35,11 @@
 #define JOBRESULTID 707
 #define JOBID 606
 
-// file types
+// file types used during file transfer between client, server, and worker
 #define IMG_FILE 755
 #define TXT_FILE 756
 
-// server response types
+// server response types let the client distinguish plain status text from file payloads
 #define SERVER_MSG 9090
 #define SERVER_FILE_TRANSFER 9091
 
@@ -50,7 +50,7 @@
 #define WPACKET_CANCELJOB 904
 #define WPACKET_RESULTS 905
 
-// job types
+// text + CSV job types
 #define JTYPE_WORDCOUNT 2500
 #define JTYPE_ECHO 2501
 #define JTYPE_CAPITALIZE 2502
@@ -58,7 +58,8 @@
 #define JTYPE_CSVSTATS 2504
 #define JTYPE_CSVSORT 2505
 #define JTYPE_CSVFILTER 2506
-// img jobs
+
+// image job types
 #define JTYPE_SCALE 2550
 #define JTYPE_RESIZE 2551
 #define JTYPE_FILTER 2552
@@ -66,6 +67,7 @@
 #define JTYPE_FLIPY 2554
 #define JTYPE_ROTATE 2555
 #define JTYPE_CHARCOAL 2556
+// Internal name kept as monochrome, but the user-facing keyword is grayscale_filter.
 #define JTYPE_MONOCHROME 2557
 #define JTYPE_STENCIL 2558
 

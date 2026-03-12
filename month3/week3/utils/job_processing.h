@@ -37,10 +37,12 @@ int job_csvsort(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]);
 
 int job_csvfilter(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]);
 
+/* Image job types operate on file paths because MagickWand works on image files, not FILE* streams. */
 int job_scale(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path);
 
 int job_resize(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path);
 
+/* Placeholder hook for a future generic filter command. */
 int job_filter_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path);
 
 int job_flipy_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path);

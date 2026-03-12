@@ -8,7 +8,8 @@
  * determine_job_type() -- parse job metadata to identify job type
  *
  * Extracts the first word from the buffer (up to space), moves remaining
- * content to start of buffer, and returns the corresponding JTYPE constant
+ * content to start of buffer, and returns the corresponding JTYPE constant.
+ * This is shared by text, CSV, and image jobs.
  */
 int determine_job_type(unsigned char buf[MAXBUFSIZE], int size){
     char keyword[size];
@@ -400,6 +401,11 @@ int job_csvfilter(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]
     return 1;
 }
 
+/*
+ * job_scale() -- resize an image proportionally using a scale factor
+ *
+ * Header format: "scale 0.5"
+ */
 int job_scale(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path){
     printf("scaling\n");
     MagickWand *magick_wand;
@@ -411,7 +417,7 @@ int job_scale(unsigned char header[MAXBUFSIZE], char* img_path, char *output_pat
     status = MagickReadImage(magick_wand, img_path);
     if (status == MagickFalse){
         fprintf(stderr, "Error reading file %s\n", img_path);
-        return -1;
+        return 1;
     }
 
     int img_width = MagickGetImageWidth(magick_wand);
@@ -446,6 +452,11 @@ int job_scale(unsigned char header[MAXBUFSIZE], char* img_path, char *output_pat
     return 1;
 }
 
+/*
+ * job_resize() -- resize an image to exact width x height dimensions
+ *
+ * Header format: "resize 300x300"
+ */
 int job_resize(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path){
     printf("resizing\n");
     MagickWand *magick_wand;
@@ -501,11 +512,17 @@ int job_resize(unsigned char header[MAXBUFSIZE], char* img_path, char *output_pa
     return 1;
 }
 
+/*
+ * job_filter_img() -- placeholder for a future generic image filter command
+ */
 int job_filter_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path){
     printf("filtering!\n");
     return 0;
 }
 
+/*
+ * job_flipy_img() -- flip image vertically
+ */
 int job_flipy_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path){
     printf("flipping!\n");
     MagickWand *magick_wand;
@@ -544,6 +561,9 @@ int job_flipy_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output
     return 1;
 }
 
+/*
+ * job_flipx_img() -- flip image horizontally
+ */
 int job_flipx_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path){
     printf("flipping!\n");
     MagickWand *magick_wand;
@@ -582,6 +602,11 @@ int job_flipx_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output
     return 1;
 }
 
+/*
+ * job_rotate_img() -- rotate image by a degree value from the header
+ *
+ * Header format: "rotate 90"
+ */
 int job_rotate_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path){
     printf("rotate\n");
     MagickWand *magick_wand;
@@ -629,6 +654,11 @@ int job_rotate_img(unsigned char header[MAXBUFSIZE], char* img_path, char *outpu
     return 1;
 }
 
+/*
+ * job_charcoal_img() -- apply ImageMagick's charcoal effect
+ *
+ * Header format: "charcoal_filter [radius] [sigma]"
+ */
 int job_charcoal_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path){
     printf("charcoal\n");
     MagickWand *magick_wand;
@@ -655,13 +685,13 @@ int job_charcoal_img(unsigned char header[MAXBUFSIZE], char* img_path, char *out
     char *endptr;
     double radius = strtod(radius_s, &endptr);
 
-    char omega_s[MAXFILEPATH];
+    char sigma_s[MAXFILEPATH];
     strip_whitespace(header);
-    extract_first_word(omega_s, header);
+    extract_first_word(sigma_s, header);
 
-    double omega = strtod(omega_s, &endptr);
+    double sigma = strtod(sigma_s, &endptr);
 
-    status = MagickCharcoalImage(magick_wand, radius, omega);
+    status = MagickCharcoalImage(magick_wand, radius, sigma);
     if (status == MagickFalse){
         fprintf(stderr, "Failed to resize image %s\n", img_path);
         return -1;
@@ -679,6 +709,11 @@ int job_charcoal_img(unsigned char header[MAXBUFSIZE], char* img_path, char *out
     return 1;
 }
 
+/*
+ * job_monochrome_img() -- convert image to grayscale
+ *
+ * User-facing command keyword is "grayscale_filter".
+ */
 int job_monochrome_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path){
     printf("mono\n");
     MagickWand *magick_wand;
@@ -716,6 +751,9 @@ int job_monochrome_img(unsigned char header[MAXBUFSIZE], char* img_path, char *o
     return 1;
 }
 
+/*
+ * job_stencil_img() -- produce a grayscale edge-detected stencil effect
+ */
 int job_stencil_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path){
     printf("stencil\n");
     MagickWand *magick_wand;
