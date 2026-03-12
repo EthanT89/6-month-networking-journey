@@ -43,6 +43,18 @@ int job_resize(unsigned char header[MAXBUFSIZE], char* img_path, char *output_pa
 
 int job_filter_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path);
 
+int job_flipy_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path);
+
+int job_flipx_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path);
+
+int job_rotate_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path);
+
+int job_charcoal_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path);
+
+int job_monochrome_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path);
+
+int job_stencil_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path);
+
 /* CSV sorting helpers (merge sort on index array) */
 void job_csvsort_mergesort(char ***csv, int col, int *idx_arr, int left, int right);
 void job_csvsort_mergesort_helper(char ***csv, int col, int *idx_arr, int left, int middle, int right);

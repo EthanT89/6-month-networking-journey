@@ -68,8 +68,32 @@ int determine_job_type(unsigned char buf[MAXBUFSIZE], int size){
         type = JTYPE_RESIZE;
     }
 
-    if (strcmp(keyword, "imgfilter") == 0){
+    if (strcmp(keyword, "filter") == 0){
         type = JTYPE_FILTER;
+    }
+
+    if (strcmp(keyword, "flipx") == 0){
+        type = JTYPE_FLIPX;
+    }
+
+    if (strcmp(keyword, "flipy") == 0){
+        type = JTYPE_FLIPY;
+    }
+
+    if (strcmp(keyword, "rotate") == 0){
+        type = JTYPE_ROTATE;
+    }
+
+    if (strcmp(keyword, "charcoal_filter") == 0){
+        type = JTYPE_CHARCOAL;
+    }
+
+    if (strcmp(keyword, "monochrome_filter") == 0){
+        type = JTYPE_MONOCHROME;
+    }
+
+    if (strcmp(keyword, "stencil_filter") == 0){
+        type = JTYPE_STENCIL;
     }
 
     return type;
@@ -375,6 +399,7 @@ int job_csvfilter(FILE *results, FILE *content, unsigned char header[MAXBUFSIZE]
 
     return 1;
 }
+
 int job_scale(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path){
     printf("scaling\n");
     MagickWand *magick_wand;
@@ -453,13 +478,10 @@ int job_resize(unsigned char header[MAXBUFSIZE], char* img_path, char *output_pa
         }
     }
 
-    // 1234x1234
+    int new_width = atoi(new_dimension);
+    int new_height = atoi(new_dimension+i);
 
-    char *endptr;
-    double new_width = strtod(new_dimension, &endptr);
-    double new_height = strtod(new_dimension+i, &endptr);
-
-    printf("new dimensions: %fx%f\n", new_width, new_height);
+    printf("new dimensions: %d x %d\n", new_width, new_height);
 
     status = MagickResizeImage(magick_wand, new_width, new_height, LanczosFilter, 1.0);
     if (status == MagickFalse){
@@ -484,6 +506,271 @@ int job_filter_img(unsigned char header[MAXBUFSIZE], char* img_path, char *outpu
     return 0;
 }
 
+int job_flipy_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path){
+    printf("flipping!\n");
+    MagickWand *magick_wand;
+    MagickBooleanType status;
+
+    MagickWandGenesis();
+    magick_wand = NewMagickWand();
+
+    status = MagickReadImage(magick_wand, img_path);
+    if (status == MagickFalse){
+        fprintf(stderr, "Error reading file %s\n", img_path);
+        return -1;
+    }
+
+    int img_width = MagickGetImageWidth(magick_wand);
+    int img_height = MagickGetImageHeight(magick_wand);
+
+    printf("img dimensions: %d x %d (wxh)\n", img_width, img_height);
+
+
+    status = MagickFlipImage(magick_wand);
+    if (status == MagickFalse){
+        fprintf(stderr, "Failed to resize image %s\n", img_path);
+        return -1;
+    }
+
+    status = MagickWriteImage(magick_wand, output_path);
+    if (status == MagickFalse) {
+        fprintf(stderr, "Error writing image\n");
+        return 1;
+    }
+
+    magick_wand = DestroyMagickWand(magick_wand);
+    MagickWandTerminus();
+
+    return 1;
+}
+
+int job_flipx_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path){
+    printf("flipping!\n");
+    MagickWand *magick_wand;
+    MagickBooleanType status;
+
+    MagickWandGenesis();
+    magick_wand = NewMagickWand();
+
+    status = MagickReadImage(magick_wand, img_path);
+    if (status == MagickFalse){
+        fprintf(stderr, "Error reading file %s\n", img_path);
+        return -1;
+    }
+
+    int img_width = MagickGetImageWidth(magick_wand);
+    int img_height = MagickGetImageHeight(magick_wand);
+
+    printf("img dimensions: %d x %d (wxh)\n", img_width, img_height);
+
+
+    status = MagickFlopImage(magick_wand);
+    if (status == MagickFalse){
+        fprintf(stderr, "Failed to resize image %s\n", img_path);
+        return -1;
+    }
+
+    status = MagickWriteImage(magick_wand, output_path);
+    if (status == MagickFalse) {
+        fprintf(stderr, "Error writing image\n");
+        return 1;
+    }
+
+    magick_wand = DestroyMagickWand(magick_wand);
+    MagickWandTerminus();
+
+    return 1;
+}
+
+int job_rotate_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path){
+    printf("rotate\n");
+    MagickWand *magick_wand;
+    MagickBooleanType status;
+
+    MagickWandGenesis();
+    magick_wand = NewMagickWand();
+
+    PixelWand *bg = NewPixelWand();
+    PixelSetColor(bg, "black");
+
+    status = MagickReadImage(magick_wand, img_path);
+    if (status == MagickFalse){
+        fprintf(stderr, "Error reading file %s\n", img_path);
+        return -1;
+    }
+
+    int img_width = MagickGetImageWidth(magick_wand);
+    int img_height = MagickGetImageHeight(magick_wand);
+
+    printf("img dimensions: %d x %d (wxh)\n", img_width, img_height);
+
+    char degree[MAXFILEPATH];
+    strip_whitespace(header);
+    extract_first_word(degree, header);
+
+    char *endptr;
+    double degrees = strtod(degree, &endptr);
+
+    status = MagickRotateImage(magick_wand, bg, degrees);
+    if (status == MagickFalse){
+        fprintf(stderr, "Failed to resize image %s\n", img_path);
+        return -1;
+    }
+
+    status = MagickWriteImage(magick_wand, output_path);
+    if (status == MagickFalse) {
+        fprintf(stderr, "Error writing image\n");
+        return 1;
+    }
+
+    magick_wand = DestroyMagickWand(magick_wand);
+    MagickWandTerminus();
+
+    return 1;
+}
+
+int job_charcoal_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path){
+    printf("charcoal\n");
+    MagickWand *magick_wand;
+    MagickBooleanType status;
+
+    MagickWandGenesis();
+    magick_wand = NewMagickWand();
+
+    status = MagickReadImage(magick_wand, img_path);
+    if (status == MagickFalse){
+        fprintf(stderr, "Error reading file %s\n", img_path);
+        return -1;
+    }
+
+    int img_width = MagickGetImageWidth(magick_wand);
+    int img_height = MagickGetImageHeight(magick_wand);
+
+    printf("img dimensions: %d x %d (wxh)\n", img_width, img_height);
+
+    char radius_s[MAXFILEPATH];
+    strip_whitespace(header);
+    extract_first_word(radius_s, header);
+
+    char *endptr;
+    double radius = strtod(radius_s, &endptr);
+
+    char omega_s[MAXFILEPATH];
+    strip_whitespace(header);
+    extract_first_word(omega_s, header);
+
+    double omega = strtod(omega_s, &endptr);
+
+    status = MagickCharcoalImage(magick_wand, radius, omega);
+    if (status == MagickFalse){
+        fprintf(stderr, "Failed to resize image %s\n", img_path);
+        return -1;
+    }
+
+    status = MagickWriteImage(magick_wand, output_path);
+    if (status == MagickFalse) {
+        fprintf(stderr, "Error writing image\n");
+        return 1;
+    }
+
+    magick_wand = DestroyMagickWand(magick_wand);
+    MagickWandTerminus();
+
+    return 1;
+}
+
+int job_monochrome_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path){
+    printf("mono\n");
+    MagickWand *magick_wand;
+    MagickBooleanType status;
+
+    MagickWandGenesis();
+    magick_wand = NewMagickWand();
+
+    status = MagickReadImage(magick_wand, img_path);
+    if (status == MagickFalse){
+        fprintf(stderr, "Error reading file %s\n", img_path);
+        return -1;
+    }
+
+    int img_width = MagickGetImageWidth(magick_wand);
+    int img_height = MagickGetImageHeight(magick_wand);
+
+    printf("img dimensions: %d x %d (wxh)\n", img_width, img_height);
+
+    status = MagickTransformImageColorspace(magick_wand, GRAYColorspace);
+    if (status == MagickFalse){
+        fprintf(stderr, "Failed to resize image %s\n", img_path);
+        return -1;
+    }
+
+    status = MagickWriteImage(magick_wand, output_path);
+    if (status == MagickFalse) {
+        fprintf(stderr, "Error writing image\n");
+        return 1;
+    }
+
+    magick_wand = DestroyMagickWand(magick_wand);
+    MagickWandTerminus();
+
+    return 1;
+}
+
+int job_stencil_img(unsigned char header[MAXBUFSIZE], char* img_path, char *output_path){
+    printf("stencil\n");
+    MagickWand *magick_wand;
+    MagickBooleanType status;
+
+    MagickWandGenesis();
+    magick_wand = NewMagickWand();
+
+    status = MagickReadImage(magick_wand, img_path);
+    if (status == MagickFalse){
+        fprintf(stderr, "Error reading file %s\n", img_path);
+        return -1;
+    }
+
+    int img_width = MagickGetImageWidth(magick_wand);
+    int img_height = MagickGetImageHeight(magick_wand);
+
+    printf("img dimensions: %d x %d (wxh)\n", img_width, img_height);
+
+    status = MagickTransformImageColorspace(magick_wand, GRAYColorspace);
+    if (status == MagickFalse){
+        fprintf(stderr, "Failed to resize image %s\n", img_path);
+        return -1;
+    }
+
+    status = MagickEdgeImage(magick_wand, 1);
+    if (status == MagickFalse){
+        fprintf(stderr, "Failed to resize image %s\n", img_path);
+        return -1;
+    }
+
+    status = MagickNegateImage(magick_wand, MagickFalse);
+    if (status == MagickFalse){
+        fprintf(stderr, "Failed to resize image %s\n", img_path);
+        return -1;
+    }
+
+    status = MagickThresholdImage(magick_wand, 0.7 * QuantumRange);
+    if (status == MagickFalse) {
+        fprintf(stderr, "Error writing image\n");
+        return 1;
+    }
+
+
+    status = MagickWriteImage(magick_wand, output_path);
+    if (status == MagickFalse) {
+        fprintf(stderr, "Error writing image\n");
+        return 1;
+    }
+
+    magick_wand = DestroyMagickWand(magick_wand);
+    MagickWandTerminus();
+
+    return 1;
+}
 
 
 /*
@@ -577,6 +864,32 @@ int process_job(unsigned char header[MAXBUFSIZE], char dir[MAXFILEPATH], char ex
         else if (job_type == JTYPE_FILTER){
             rv = job_filter_img(header, fcontent, fresults);
         }
+
+        else if (job_type == JTYPE_FLIPX){
+            rv = job_flipx_img(header, fcontent, fresults);
+        }
+
+        else if (job_type == JTYPE_FLIPY){
+            rv = job_flipy_img(header, fcontent, fresults);
+        }
+
+        else if (job_type == JTYPE_ROTATE){
+            rv = job_rotate_img(header, fcontent, fresults);
+        }
+
+        else if (job_type == JTYPE_CHARCOAL){
+            rv = job_charcoal_img(header, fcontent, fresults);
+        }
+
+        else if (job_type == JTYPE_MONOCHROME){
+            rv = job_monochrome_img(header, fcontent, fresults);
+        }
+
+        else if (job_type == JTYPE_STENCIL){
+            rv = job_stencil_img(header, fcontent, fresults);
+        }
+
+
 
         fclose(results_file);
         fclose(content_file);

@@ -62,6 +62,12 @@
 #define JTYPE_SCALE 2550
 #define JTYPE_RESIZE 2551
 #define JTYPE_FILTER 2552
+#define JTYPE_FLIPX 2553
+#define JTYPE_FLIPY 2554
+#define JTYPE_ROTATE 2555
+#define JTYPE_CHARCOAL 2556
+#define JTYPE_MONOCHROME 2557
+#define JTYPE_STENCIL 2558
 
 // worker error codes
 #define WERR_NONE 1
