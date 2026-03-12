@@ -88,7 +88,7 @@ int determine_job_type(unsigned char buf[MAXBUFSIZE], int size){
         type = JTYPE_CHARCOAL;
     }
 
-    if (strcmp(keyword, "monochrome_filter") == 0){
+    if (strcmp(keyword, "grayscale_filter") == 0){
         type = JTYPE_MONOCHROME;
     }
 
