@@ -75,23 +75,4 @@
 #define WERR_INVALIDJOB -2
 #define WERR_WORKERQUIT -3
 
-/*
-
-Job creation format:
-
-./client submit "[JOB_TYPE] [MODS] [JOB-SPECIFIC META-DATA]" -> "Job Submitted with ID: [JOB_ID]"
-
-./client status [JOB_ID] -> "Job -[JOB_ID]- Status - [STATUS]"
-
-./client results [JOB_ID] -> [RESULTS]                                                  // Given a job has string/text output
-                             "Job output found in `output/job-[JOB_ID]"                 // Given a job has file/non-text output
-                             "Job [JOB_ID] incomplete - use `./client status [JOB_ID]"  // Given a job is not yet completed
-                             "Job [JOB_ID] not found"                                   // Given a job does not exist
-
-
-
-
-*/
-
-
 #endif
