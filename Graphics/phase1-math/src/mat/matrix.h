@@ -2,6 +2,9 @@
  * matrix.h -- simple matrix utils
  */
 
+#ifndef MATRIX_H
+#define MATRIX_H
+
 #include "../vec/vector.h"
 
 struct Matrix {
@@ -16,7 +19,7 @@ struct Matrix identity_matrix_constructor();
 
 struct Matrix transpose(struct Matrix a);
 
-struct Matrix translation_constructor(float translation);
+struct Matrix translation_constructor(float tx, float ty, float tz);
 
 struct Matrix rotation_x_constructor(float angle);
 
@@ -24,7 +27,7 @@ struct Matrix rotation_y_constructor(float angle);
 
 struct Matrix rotation_z_constructor(float angle);
 
-struct Matrix scale_constructor(float scale);
+struct Matrix scale_constructor(float sx, float sy, float sz);
 
 /*
 
@@ -46,3 +49,5 @@ Transpose
 Translation, rotation (X, Y, Z), scale constructors
 
 */
+
+#endif
