@@ -4,6 +4,7 @@
 
 #include "./mat/matrix.h"
 #include "./camera/camera.h"
+#include "./projection/projection.h"
 #include "./vec/vector.h"
 #include <math.h>
 #include <stdbool.h>
@@ -283,6 +284,37 @@ static void test_camera_suite(void) {
      );
 }
 
+static void test_projection_suite(void) {
+     printf("\n[SUITE] Projection\n");
+
+     const float fov = 1.57079632679f;
+     const float aspect = 1.0f;
+     const float near = 1.0f;
+     const float far = 10.0f;
+     struct Matrix p = perspective(fov, aspect, near, far);
+
+     check_float(p.m[0][0], 1.0f, "perspective_m00");
+     check_float(p.m[1][1], 1.0f, "perspective_m11");
+     check_float(p.m[2][2], -11.0f / 9.0f, "perspective_m22");
+     check_float(p.m[2][3], -20.0f / 9.0f, "perspective_m23");
+     check_float(p.m[3][2], -1.0f, "perspective_m32");
+
+     check_float(p.m[0][1], 0.0f, "perspective_zero_m01");
+     check_float(p.m[1][0], 0.0f, "perspective_zero_m10");
+     check_float(p.m[3][3], 0.0f, "perspective_zero_m33");
+
+     struct Vector4 center_clip = mat4_mul_vec4(p, (struct Vector4){0.0f, 0.0f, -5.0f, 1.0f});
+     check_float(center_clip.x / center_clip.w, 0.0f, "perspective_center_ndc_x");
+     check_float(center_clip.y / center_clip.w, 0.0f, "perspective_center_ndc_y");
+     check_float(center_clip.z / center_clip.w, 0.7777778f, "perspective_center_ndc_z");
+
+     struct Vector4 near_right_clip = mat4_mul_vec4(p, (struct Vector4){1.0f, 0.0f, -1.0f, 1.0f});
+     check_float(near_right_clip.x / near_right_clip.w, 1.0f, "perspective_near_right_ndc_x");
+
+     struct Vector4 near_top_clip = mat4_mul_vec4(p, (struct Vector4){0.0f, 1.0f, -1.0f, 1.0f});
+     check_float(near_top_clip.y / near_top_clip.w, 1.0f, "perspective_near_top_ndc_y");
+}
+
 int main(void) {
      printf("Phase 1 Math Test Suite\n");
      printf("=======================\n");
@@ -291,6 +323,7 @@ int main(void) {
      test_vector4_suite();
      test_matrix_suite();
      test_camera_suite();
+     test_projection_suite();
 
      printf("\n[SUMMARY]\n");
      printf("Checks run : %d\n", g_total_checks);
