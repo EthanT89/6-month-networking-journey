@@ -1,5 +1,5 @@
 /*
- * test.c -- test suite for standard vector functions/transformations
+ * main.c -- test suite for graphics handling
  */
 
 #include "./vector.h"

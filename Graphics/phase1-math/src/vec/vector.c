@@ -61,15 +61,15 @@ struct Vector4 v4_scalar_mult (struct Vector4 a, float b){
     return res;
 }
 
-float v3_dot_product (struct Vector3 a, struct Vector3 b){
+float v3_dot (struct Vector3 a, struct Vector3 b){
     return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
-float v4_dot_product (struct Vector4 a, struct Vector4 b){
+float v4_dot (struct Vector4 a, struct Vector4 b){
     return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
 }
 
-struct Vector3 v3_cross_product (struct Vector3 a, struct Vector3 b){
+struct Vector3 v3_cross (struct Vector3 a, struct Vector3 b){
     struct Vector3 res;
     res.x = a.y * b.z - b.y * a.z;
     res.y = a.z * b.x - b.z * a.x;
@@ -78,7 +78,7 @@ struct Vector3 v3_cross_product (struct Vector3 a, struct Vector3 b){
     return res;
 }
 
-struct Vector4 v4_cross_product (struct Vector4 a, struct Vector4 b){
+struct Vector4 v4_cross (struct Vector4 a, struct Vector4 b){
     struct Vector4 res;
     res.x = a.y * b.z - b.y * a.z;
     res.y = a.z * b.x - b.z * a.x;
@@ -88,7 +88,7 @@ struct Vector4 v4_cross_product (struct Vector4 a, struct Vector4 b){
     return res;
 }
 
-struct Vector3 v3_normalize (struct Vector3 a){
+struct Vector3 v3_norm (struct Vector3 a){
     float len = v3_magnitude(a);
     if (len == 0) return a;
     a.x = a.x / len;
@@ -97,7 +97,7 @@ struct Vector3 v3_normalize (struct Vector3 a){
     return a;
 }
 
-struct Vector4 v4_normalize (struct Vector4 a){
+struct Vector4 v4_norm (struct Vector4 a){
     float len = v4_magnitude(a);
     if (len == 0) return a;
     a.x = a.x / len;
