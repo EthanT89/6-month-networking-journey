@@ -15,6 +15,8 @@
 static void test_full_pipeline(void){
      printf("\n[SUITE] Pipeline\n");
 
+     
+
      // simple cube vertices
      struct Vector4 cube[8] = {
           {-1, -1, -1, 1}, 
@@ -26,6 +28,14 @@ static void test_full_pipeline(void){
           { 1,  1,  1, 1}, 
           {-1,  1,  1, 1}, 
      };
+
+     struct Matrix scale = scale_constructor(1.0f, 1.0f, 1.0f);
+     struct Matrix rotate_x = rotation_x_constructor(3.0f);
+     struct Matrix rotate_y = rotation_y_constructor(3.5f);
+     struct Matrix rotate_z = rotation_z_constructor(0.5f);
+     struct Matrix rotate = mat4_mul(rotate_x, mat4_mul(rotate_y, rotate_z));
+     struct Matrix translate = translation_constructor(0.0f, 0.0f, 0.0f);
+     struct Matrix model = mat4_mul(translate, (mat4_mul(rotate, scale)));
 
      // define camera position and target
      struct Vector3 camera = {-5.0f, 0.0f ,0.0f};
@@ -41,7 +51,8 @@ static void test_full_pipeline(void){
      float far = 100.0f;
      
      struct Matrix proj = perspective(fov, aspect, near, far); // project and transform into the clip space
-     struct Matrix mvp = mat4_mul(proj, view);
+     struct Matrix mv = mat4_mul(view, model);
+     struct Matrix mvp = mat4_mul(proj, mv);
 
      for (int i = 0; i < 8; i++){
           cube[i] = mat4_mul_vec4(mvp, cube[i]); // project onto clip space
@@ -92,5 +103,5 @@ int main(void) {
      printf("\nRunning full pipeline...\n");
      test_full_pipeline();
 
-     return (g_failed_checks == 0) ? 0 : 1;
+     return 1;
 }
