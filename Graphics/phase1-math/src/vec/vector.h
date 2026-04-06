@@ -8,6 +8,11 @@
 #include <math.h>
 #include <stdlib.h>
 
+struct Vector2 {
+    float x;
+    float y;
+};
+
 struct Vector3 {
     float x, y, z;
 };
