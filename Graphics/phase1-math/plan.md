@@ -207,23 +207,23 @@ Look at simple shaders to see how the math you're implementing gets used in real
 Use this to track mastery. "Know it" means you can derive it from memory and explain the geometric meaning.
 
 **Vectors**
-- [ ] Dot product — formula, geometric meaning, when result is 0 / positive / negative
+- [X] Dot product — formula, geometric meaning, when result is 0 / positive / negative
 - [ ] Cross product — formula, right-hand rule, geometric meaning
-- [ ] Normalize — why and when you need unit vectors
-- [ ] Projection of one vector onto another
+- [X] Normalize — why and when you need unit vectors
+- [X] Projection of one vector onto another
 
 **Matrices**
 - [ ] Why matrix multiplication is not commutative
-- [ ] How to read a transformation matrix (what each row/column means)
-- [ ] Why we use 4×4 instead of 3×3
-- [ ] What the `w` component means for points vs vectors
+- [X] How to read a transformation matrix (what each row/column means)
+- [X] Why we use 4×4 instead of 3×3
+- [X] What the `w` component means for points vs vectors
 - [ ] How to invert a rotation matrix (transpose — and why this works)
 
 **Coordinate Spaces**
-- [ ] What each space in the pipeline means and why it exists
-- [ ] How the view matrix is constructed from camera position and orientation
+- [X] What each space in the pipeline means and why it exists
+- [X] How the view matrix is constructed from camera position and orientation
 - [ ] Why `view = inverse(camera_to_world)`
-- [ ] What the frustum is and how the projection matrix warps it into a unit cube
+- [X] What the frustum is and how the projection matrix warps it into a unit cube
 - [ ] What the perspective divide does and why
 
 **The Pipeline**
