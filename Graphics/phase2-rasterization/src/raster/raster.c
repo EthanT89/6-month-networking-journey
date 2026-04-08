@@ -7,13 +7,11 @@ void draw_line(struct Framebuffer *fb,
     int tempx;
     int tempy;
 
-    int reversex = 0;
     int negative_slope = 0;
     int steep = 0;
 
 
     if (x1 - x0 < 0){ // line goes backwards, reverse it to make algo simpler
-        reversex = 1;
         tempx = x0;
         tempy = y0;
         x0 = x1;
@@ -61,8 +59,7 @@ void draw_line(struct Framebuffer *fb,
             realY *= -1;
         }
 
-        if (fb_depth_test(fb, realX, realY, 1) == 1) fb_set_pixel(fb, realX, realY, r, g, b);
-
+        fb_set_pixel(fb, realX, realY, r, g, b);
         X++;
 
         if (d <= 0){
