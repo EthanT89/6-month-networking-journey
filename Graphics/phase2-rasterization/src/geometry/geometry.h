@@ -10,4 +10,6 @@ struct Triangle {
 
 int is_back_face(struct Triangle *t); // returns 1 if back-facing
 
+float signed_area(struct Vector3 A, struct Vector3 B, struct Vector3 C );
+
 #endif

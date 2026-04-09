@@ -1,7 +1,12 @@
 #include "./geometry.h"
 
 int is_back_face(struct Triangle *t){
-    // signed_area = (B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y)
+    float area = signed_area(t->v[0], t->v[1], t->v[2]);
+
+    return area > 0 ? 1 : 0;
+}
+
+float signed_area(struct Vector3 A, struct Vector3 B, struct Vector3 C ){
     /*
      * Triangle vertices:
      *
@@ -33,7 +38,5 @@ int is_back_face(struct Triangle *t){
      */
 
     // So, 
-    float signed_area = ( t->v[1].x - t->v[0].x ) * ( t->v[2].y - t->v[0].y ) - ( t->v[2].x - t->v[0].x ) * ( t->v[1].y - t->v[0].y );
-
-    return signed_area < 0 ? 1 : 0;
+    return (B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y);
 }
