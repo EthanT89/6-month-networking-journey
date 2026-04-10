@@ -72,7 +72,8 @@ void draw_line(struct Framebuffer *fb,
 }
 
 void draw_triangle(struct Framebuffer *fb, 
-                   struct Vector3 v0, struct Vector3 v1, struct Vector3 v2,
+                   struct Vector3 v0, struct Vector3 v1, struct Vector3 v2, 
+                   float b0, float b1, float b2,
                    unsigned char r, unsigned char g, unsigned char b)
 {
 
@@ -89,7 +90,6 @@ void draw_triangle(struct Framebuffer *fb,
 
     // 2. **Barycentric coordinates** — for each pixel in the bounding box, compute the barycentric weights. Use the signed area method.
     float total_area = signed_area(v0, v1, v2);
-    printf("Total area check.\n");
     if (fabsf(total_area) < 1e-6f) return;
 
     for (int x = minx; x <= maxx; x++){
@@ -109,6 +109,9 @@ void draw_triangle(struct Framebuffer *fb,
             float alpha = w0 / total_area;
             float beta = w1 / total_area;
             float gamma = w2 / total_area;
+            
+            // interpolate the brightness of the pixel based each vertex normal's brightness
+            float interpolated_b = alpha * b0 + beta * b1 + gamma * b2;
 
             // 4. **Depth interpolation** — interpolate the depth value using barycentric weights. Use perspective-correct interpolation.
             p.z = alpha * v0.z + beta * v1.z + gamma * v2.z; // naive approach, currently not using w_clipspace
@@ -117,7 +120,7 @@ void draw_triangle(struct Framebuffer *fb,
             if ( fb_depth_test(fb, x, y, p.z) == 0) continue;
 
             // 6. **Write pixel** — update color buffer and depth buffer.
-            fb_set_pixel(fb, x, y, r, g, b);
+            fb_set_pixel(fb, x, y, r * interpolated_b, g * interpolated_b, b * interpolated_b);
         }
     }
 }
