@@ -42,23 +42,25 @@ struct Matrix perspective(float fov, float aspect, float near, float far){
 }
 
 // Divide each coordinate (x,y,z) by the stored w value. This restores a perceived "depth" to the projection
-struct Vector3 perspective_divide(struct Vector4 clip){
+struct Vector4 perspective_divide(struct Vector4 clip){
     if (clip.w == 0) {
-        struct Vector3 zero = {0, 0, 0};
+        struct Vector4 zero = {0, 0, 0, 0};
         return zero;
     }
-    struct Vector3 divide;
+    struct Vector4 divide;
     divide.x = clip.x / clip.w;
     divide.y = clip.y / clip.w;
     divide.z = clip.z / clip.w;
+    divide.w = clip.w;
     return divide;
 }
 
 // Map to viewport pixel coordinates. z is unused for now, but will later be used for the depth buffer
-struct Vector3 viewport (struct Vector3 ndc, float height, float width){
-    struct Vector3 view;
+struct Vector4 viewport (struct Vector4 ndc, float height, float width){
+    struct Vector4 view;
     view.x = (ndc.x + 1) / 2 * width;
     view.y = (1 - ndc.y) / 2 * height;
     view.z = ndc.z; // stored for later use
+    view.w = ndc.w;
     return view;
 }
