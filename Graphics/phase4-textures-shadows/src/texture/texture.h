@@ -28,7 +28,7 @@ void texture_load(const char *filename, struct Texture *texture);
 /*
  * given the u and v values for a pixel, determine the corresponding texture map rgb value (averages between 4 nearest neighbors)
  */
-void texture_sample_bl(float u, float v, struct Texture texture, unsigned char *r, unsigned char *g, unsigned char *b);
+void texture_sample_bl(float u, float v, struct Texture *texture, unsigned char *r, unsigned char *g, unsigned char *b);
 
 /*
  * free a texture structure
