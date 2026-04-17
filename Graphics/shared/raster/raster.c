@@ -72,7 +72,7 @@ void draw_line(struct Framebuffer *fb,
 }
 
 void draw_triangle(struct Framebuffer *fb, 
-                   struct Vector4 v0, struct Vector4 v1, struct Vector4 v2, 
+                   struct Vector3 v0, struct Vector3 v1, struct Vector3 v2, 
                    float b0, float b1, float b2,
                    unsigned char r, unsigned char g, unsigned char b)
 {
@@ -95,7 +95,7 @@ void draw_triangle(struct Framebuffer *fb,
     for (int x = minx; x <= maxx; x++){
         for (int y = miny; y <= maxy; y++){
 
-            struct Vector3 p = {x,y,0}; // initialize to 0 depth because we don't have that yet.
+            struct Vector3 p = {x, y, 0}; // initialize to 0 depth because we don't have that yet.
 
             // unnormalized weights (before dividing by total_area)
             float w0 = signed_area(p, v1, v2);

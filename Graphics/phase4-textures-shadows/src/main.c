@@ -12,19 +12,31 @@
 #include "../../shared/raster/raster.h"
 
 #include <math.h>
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
+#include <stdlib.h>
 #include <stdbool.h>
 
-#define OBJ_COUNT 1
+#define FB_WIDTH 800
+#define FB_HEIGHT 600
+#define CUBE_VERTEX_COUNT 8
+#define CUBE_TRI_COUNT 12
+
 #define RTEST 255
 #define GTEST 150
 #define BTEST 255
 #define AMBIENT 0.1f
 
-struct Vector4 * generate_cube() {
-    struct Vector4 *cube = malloc((8 * sizeof (struct Vector4)));
+static const int cube_tri_indices[CUBE_TRI_COUNT][3] = {
+    {4, 5, 6}, {4, 6, 7},
+    {1, 0, 3}, {1, 3, 2},
+    {5, 1, 2}, {5, 2, 6},
+    {0, 4, 7}, {0, 7, 3},
+    {7, 6, 2}, {7, 2, 3},
+    {0, 1, 5}, {0, 5, 4},
+};
+
+static struct Vector4 *create_cube_vertices(void) {
+    struct Vector4 *cube = malloc(CUBE_VERTEX_COUNT * sizeof(struct Vector4));
+    if (!cube) return NULL;
     cube[0] = (struct Vector4){-1, -1, -1, 1};
     cube[1] = (struct Vector4){ 1, -1, -1, 1};
     cube[2] = (struct Vector4){ 1,  1, -1, 1};
@@ -37,46 +49,79 @@ struct Vector4 * generate_cube() {
     return cube;
 }
 
-static void tests () {
+static void build_model_space_data(
+    const struct Vector4 cube[CUBE_VERTEX_COUNT],
+    struct Matrix model,
+    struct Vector3 world_verts[CUBE_VERTEX_COUNT],
+    struct Triangle world_triangles[CUBE_TRI_COUNT],
+    struct Vector3 vert_norms[CUBE_VERTEX_COUNT])
+{
+    for (int vi = 0; vi < CUBE_VERTEX_COUNT; vi++){
+        struct Vector4 w = mat4_mul_vec4(model, cube[vi]);
+        world_verts[vi] = (struct Vector3){w.x, w.y, w.z};
+    }
+
+    for (int ti = 0; ti < CUBE_TRI_COUNT; ti++){
+        world_triangles[ti].v[0] = world_verts[cube_tri_indices[ti][0]];
+        world_triangles[ti].v[1] = world_verts[cube_tri_indices[ti][1]];
+        world_triangles[ti].v[2] = world_verts[cube_tri_indices[ti][2]];
+        world_triangles[ti].r = RTEST;
+        world_triangles[ti].g = GTEST;
+        world_triangles[ti].b = BTEST;
+        world_triangles[ti].normal = compute_face_normal(
+            world_triangles[ti].v[0],
+            world_triangles[ti].v[1],
+            world_triangles[ti].v[2]);
+    }
+
+    for (int vi = 0; vi < CUBE_VERTEX_COUNT; vi++){
+        struct Vector3 sum = {0, 0, 0};
+        for (int ti = 0; ti < CUBE_TRI_COUNT; ti++){
+            if (cube_tri_indices[ti][0] == vi || cube_tri_indices[ti][1] == vi || cube_tri_indices[ti][2] == vi){
+                sum = v3_addition(sum, world_triangles[ti].normal);
+            }
+        }
+        vert_norms[vi] = v3_norm(sum);
+    }
+}
+
+static void compute_triangle_lighting(
+    struct Triangle world_triangles[CUBE_TRI_COUNT],
+    const struct Vector3 vert_norms[CUBE_VERTEX_COUNT],
+    struct DirectionalLight light,
+    struct Vector3 camera)
+{
+    for (int ti = 0; ti < CUBE_TRI_COUNT; ti++){
+        for (int j = 0; j < 3; j++){
+            int vertex_id = cube_tri_indices[ti][j];
+            float diffuse = compute_diffuse(vert_norms[vertex_id], light);
+            float specular = 0.0f;
+
+            if (diffuse > 0.0f){
+                struct Vector3 midpoint = get_triangle_midpoint(&world_triangles[ti]);
+                struct Vector3 view_dir = v3_norm(v3_subtraction(camera, midpoint));
+                specular = compute_specular(world_triangles[ti].normal, light.direction, view_dir, 16.0f);
+            }
+
+            world_triangles[ti].brightness[j] = fminf(AMBIENT + diffuse + specular, 1.0f);
+        }
+    }
+}
+
+static void render_single_cube(void) {
     static struct Framebuffer fb;
     static bool framebuffer_initialized = false;
 
-    struct Vector4 *cube1 = generate_cube();
-    struct Vector4 *cube2 = generate_cube();
-    struct Vector4 *cube3 = generate_cube();
+    struct Vector4 *cube = create_cube_vertices();
+    if (!cube) return;
 
-    int tri_indices_cube[12][3] = {
-        {4, 5, 6}, {4, 6, 7}, // front face (z=+1)
-        {1, 0, 3}, {1, 3, 2}, // back face (z=-1)
-        {5, 1, 2}, {5, 2, 6}, // right face (x=+1)
-        {0, 4, 7}, {0, 7, 3}, // left face (x=-1)
-        {7, 6, 2}, {7, 2, 3}, // top face (y=+1)
-        {0, 1, 5}, {0, 5, 4}, // bottom face (y=-1)
-    };
-
-    struct Vector4 **cubes = {
-        &cube1,
-        &cube2,
-        &cube3,
-    };
-
-    float translations[3][3] = {
-        {0.0f, 0.0f, 0.0f},
-        {5.0f, 0.0f, 0.0f},
-        (0.0f, 5.0f, 0.0f)
-    };
-
-    float rotations[3][3] = {
-        {3.0f, 0.0f, 2.2f},
-        {5.0f, 4.0f, 0.5f},
-        (0.0f, 5.0f, 1.0f)
-    };
-
-    float scales[3] = {1.0f, 2.0f, 1.5f};
+    float translation[3] = {0.0f, 0.0f, 2.0f};
+    float rotation[3] = {3.0f, 0.0f, 2.2f};
+    float scale_value = 1.0f;
 
     // define lighting position
     struct DirectionalLight light;
-    light.direction = v3_norm((struct Vector3){2, 5, 2});
+    light.direction = v3_norm((struct Vector3){-1, -1, 1});
     light.intensity = 1.0f;
 
     // define camera position and target
@@ -84,127 +129,84 @@ static void tests () {
     struct Vector3 target = {5.0f, 0.0f, 0.0f};
     struct Vector3 up = {0.0f, 1.0f, 0.0f};
 
-    struct Vector4 world_verts[3][8]; // Captured world space coordinates for triangle normal calculations
-    struct Triangle world_triangles[3][12];
-    struct Vector3 vert_norms[3][8];
+    struct Vector3 world_verts[CUBE_VERTEX_COUNT];
+    struct Triangle world_triangles[CUBE_TRI_COUNT];
+    struct Vector3 vert_norms[CUBE_VERTEX_COUNT];
+    struct Vector4 clip_verts[CUBE_VERTEX_COUNT];
 
     if (!framebuffer_initialized) {
-        fb = fb_create(800, 600); // default to 800x600 canvas
+        fb = fb_create(FB_WIDTH, FB_HEIGHT);
         framebuffer_initialized = true;
     }
     fb_clear(&fb);
 
-    for (int i = 0; i < 3; i++){
-        struct Matrix translate = translation_constructor(translations[i][0], translations[i][1], translations[i][2]);
-        struct Matrix rotx = rotation_x_constructor(rotations[i][0]);
-        struct Matrix roty = rotation_y_constructor(rotations[i][1]);
-        struct Matrix rotz = rotation_z_constructor(rotations[i][2]);
-        struct Matrix scale = scale_constructor(scales[i], scales[i], scales[i]);
+    struct Matrix translate = translation_constructor(translation[0], translation[1], translation[2]);
+    struct Matrix rotx = rotation_x_constructor(rotation[0]);
+    struct Matrix roty = rotation_y_constructor(rotation[1]);
+    struct Matrix rotz = rotation_z_constructor(rotation[2]);
+    struct Matrix scale = scale_constructor(scale_value, scale_value, scale_value);
 
-        struct Matrix rotate = mat4_mul(rotx, mat4_mul(roty, rotz));
-        struct Matrix model = mat4_mul(translate, mat4_mul(rotate, scale));
+    struct Matrix rotate = mat4_mul(rotx, mat4_mul(roty, rotz));
+    struct Matrix model = mat4_mul(translate, mat4_mul(rotate, scale));
 
-        // BRANCH 1 — world space (for lighting)
-        for (int j = 0; j < 8; j++){
-            struct Vector4 w = mat4_mul_vec4(model, cubes[i][j]);
-            world_verts[i][j].x = w.x;
-            world_verts[i][j].y = w.y;
-            world_verts[i][j].z = w.z;
-        }
+    build_model_space_data(cube, model, world_verts, world_triangles, vert_norms);
+    compute_triangle_lighting(world_triangles, vert_norms, light, camera);
 
-        for (int j = 0; j < 12; j++){
-            world_triangles[i][j].v[0] = *world_verts[tri_indices_cube[j][0]];
-            world_triangles[i][j].v[1] = *world_verts[tri_indices_cube[j][1]];
-            world_triangles[i][j].v[2] = *world_verts[tri_indices_cube[j][2]];
-            world_triangles[i][j].r = RTEST;
-            world_triangles[i][j].g = GTEST;
-            world_triangles[i][j].b = BTEST;
-            world_triangles[i][j].normal = compute_face_normal(world_triangles[i][j].v[0], world_triangles[i][j].v[1], world_triangles[i][j].v[2]);
-        }
+    struct Matrix view = lookAt(camera, target, up); // translate and transform into camera space
 
-        for (int k = 0; k < 8; k++){
-            struct Vector3 sum = {0, 0, 0};
-            for (int j = 0; j < 12; j++){
-                if ( tri_indices_cube[j][0] == k || tri_indices_cube[j][1] == k || tri_indices_cube[j][2] == k){
-                    sum = v3_addition(sum, world_triangles[i][j].normal);
-                }
-            }
-            vert_norms[i][k] = v3_norm(sum);
-        }
+    // define frustrum values
+    float fov = 1.5708f;
+    float aspect = (float)FB_WIDTH / (float)FB_HEIGHT;
+    float near = 0.1f;
+    float far = 100.0f;
+    
+    struct Matrix proj = perspective(fov, aspect, near, far); // project and transform into the clip space
+    struct Matrix mvp = mat4_mul(proj, mat4_mul(view, model));
 
+    for (int j = 0; j < CUBE_VERTEX_COUNT; j++){
+        clip_verts[j] = mat4_mul_vec4(mvp, cube[j]); // project onto clip space
+    }
 
-        // compute lighting
-        for (int k = 0; k < 12; k++){
+    struct Vector3 cube_v3[CUBE_VERTEX_COUNT];
+    for (int j = 0; j < CUBE_VERTEX_COUNT; j++){
+        struct Vector4 ndc = perspective_divide(clip_verts[j]); // maps to NDC
+        struct Vector4 viewport_v = viewport(ndc, FB_HEIGHT, FB_WIDTH); // maps to Viewport space
+        cube_v3[j] = (struct Vector3){viewport_v.x, viewport_v.y, viewport_v.z};
+    }
 
-            for (int j = 0; j < 3; j++){
-                float diffuse = compute_diffuse(*vert_norms[tri_indices_cube[k][j]], light);
-                float specular = 0.0f;
-                if (diffuse > 0.0f){
-                    struct Vector3 midpoint = get_triangle_midpoint(&world_triangles[i][k]);
-                    struct Vector3 view_dir = v3_norm(v3_subtraction(camera, midpoint));
-                    specular = compute_specular(world_triangles[i][k].normal, light.direction, view_dir, 16.0f); 
-                }
+    struct Triangle triangles[CUBE_TRI_COUNT];
+    for (int ti = 0; ti < CUBE_TRI_COUNT; ti++){
+        triangles[ti].v[0] = cube_v3[cube_tri_indices[ti][0]];
+        triangles[ti].v[1] = cube_v3[cube_tri_indices[ti][1]];
+        triangles[ti].v[2] = cube_v3[cube_tri_indices[ti][2]];
+        triangles[ti].clip_w[0] = clip_verts[cube_tri_indices[ti][0]].w;
+        triangles[ti].clip_w[1] = clip_verts[cube_tri_indices[ti][1]].w;
+        triangles[ti].clip_w[2] = clip_verts[cube_tri_indices[ti][2]].w;
+        triangles[ti].r = RTEST;
+        triangles[ti].g = GTEST;
+        triangles[ti].b = BTEST;
+    }
 
-                world_triangles[i][k].brightness[j] = fmin((AMBIENT + diffuse + specular), 1.0f);
-            }
-        }
-
-        struct Matrix view = lookAt(camera, target, up); // translate and transform into camera space
-
-        // define frustrum values
-        float fov = 1.5708f;
-        float aspect = 800.0f / 600.0f;
-        float near = 0.1f;
-        float far = 100.0f;
-        
-        struct Matrix proj = perspective(fov, aspect, near, far); // project and transform into the clip space
-        struct Matrix mvp = mat4_mul(proj, mat4_mul(view, model));
-
-        for (int j = 0; j < 8; j++){
-            cubes[i][j] = mat4_mul_vec4(mvp, cubes[i][j]); // project onto clip space
-        }
-
-        struct Vector4 cube_v3[8];
-        for (int j = 0; j < 8; j++){
-            cube_v3[j] = perspective_divide(cubes[i][j]); // maps to NDC
-        }
-        for (int j = 0; j < 8; j++){
-            cube_v3[j] = viewport(cube_v3[j], 600.0f, 800.0f); // maps to Viewport space
-        }
-
-        struct Triangle triangles[12];
-        for (int j = 0; j < 12; j++){
-            triangles[j].v[0] = cube_v3[tri_indices_cube[j][0]];
-            triangles[j].v[1] = cube_v3[tri_indices_cube[j][1]];
-            triangles[j].v[2] = cube_v3[tri_indices_cube[j][2]];
-            triangles[j].r = RTEST;
-            triangles[j].g = GTEST;
-            triangles[j].b = BTEST;
-        }
-
-        for (int j = 0; j < 12; j++){
-            if (is_back_face(&triangles[j])) continue;
-            // printf("[TEST] Drawing Triangle.\n");
-            draw_triangle(&fb,
-                triangles[j].v[0],
-                triangles[j].v[1],
-                triangles[j].v[2],
-                world_triangles[i][j].brightness[0],
-                world_triangles[i][j].brightness[1],
-                world_triangles[i][j].brightness[2],
-                world_triangles[i][j].r,
-                world_triangles[i][j].g,
-                world_triangles[i][j].b);
-        }
+    for (int ti = 0; ti < CUBE_TRI_COUNT; ti++){
+        if (is_back_face(&triangles[ti])) continue;
+        draw_triangle(&fb,
+            triangles[ti].v[0],
+            triangles[ti].v[1],
+            triangles[ti].v[2],
+            world_triangles[ti].brightness[0],
+            world_triangles[ti].brightness[1],
+            world_triangles[ti].brightness[2],
+            world_triangles[ti].r,
+            world_triangles[ti].g,
+            world_triangles[ti].b);
     }
 
     fb_write_ppm(&fb, "./output.ppm");
-    return 1;
+    free(cube);
 }
 
 int main (void) {
-
-    tests();
+    render_single_cube();
 
     return 0;
 }

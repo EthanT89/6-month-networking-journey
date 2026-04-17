@@ -3,7 +3,7 @@
 /*
  * computes the face normal of a triangle using counter-clockwise positive rotation
  */
-struct Vector3 compute_face_normal(struct Vector4 v0, struct Vector4 v1, struct Vector4 v2)
+struct Vector3 compute_face_normal(struct Vector3 v0, struct Vector3 v1, struct Vector3 v2)
 {
     // using counter-clockwise positive convention,
     // we define the two vectors to be originating

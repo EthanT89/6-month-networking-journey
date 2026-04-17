@@ -5,7 +5,9 @@
 
 
 struct Triangle {
-    struct Vector4 v[3];
+    struct Vector3 v[3];
+    struct Vector2 uv[3]; // per-vertex uv coordinates
+    float clip_w[3]; // per-vertex clipspace w value
     struct Vector3 normal;     // face normal in world space
     float brightness[3];
     unsigned char r, g, b;

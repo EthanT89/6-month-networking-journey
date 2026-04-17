@@ -10,7 +10,7 @@ struct DirectionalLight {
     unsigned char r, g, b;
 };
 
-struct Vector3 compute_face_normal(struct Vector4 v0, struct Vector4 v1, struct Vector4 v2);
+struct Vector3 compute_face_normal(struct Vector3 v0, struct Vector3 v1, struct Vector3 v2);
 
 float compute_diffuse(struct Vector3 normal, struct DirectionalLight light);
 
