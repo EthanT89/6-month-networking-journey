@@ -10,17 +10,29 @@ texture_destroy()     — frees pixel data
 #define TEXTURE_H
 
 struct Texture {
-    int width;
-    int height;
-    unsigned char *pixel_data;
+    int width; // pixel width
+    int height; // pixel height
+    unsigned char *pixel_data; // total size = width * height * 3
 };
 
-void texture_sample_nn(float u, float v, struct Texture texture,unsigned char *r, unsigned char *g, unsigned char *b);
+/*
+ * given the u and v values for a pixel, determine the corresponding texture map rgb value (rounds to nearest texture pixel)
+ */
+void texture_sample_nn(float u, float v, struct Texture texture, unsigned char *r, unsigned char *g, unsigned char *b);
 
-void texture_load(unsigned char *filename, struct Texture *texture);
+/*
+ * load a texture file into the texture struct
+ */
+void texture_load(const char *filename, struct Texture *texture);
 
-void texture_sample_bl(float u, float v, struct Texture texture,unsigned char *r, unsigned char *g, unsigned char *b);
+/*
+ * given the u and v values for a pixel, determine the corresponding texture map rgb value (averages between 4 nearest neighbors)
+ */
+void texture_sample_bl(float u, float v, struct Texture texture, unsigned char *r, unsigned char *g, unsigned char *b);
 
+/*
+ * free a texture structure
+ */
 void texture_destroy(struct Texture *texture);
 
 #endif
