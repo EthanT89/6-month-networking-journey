@@ -5,6 +5,7 @@
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 #include "../framebuffer/framebuffer.h"
+#include "../../phase4-textures-shadows/src/texture/texture.h"
 #include "../math/vec/vector.h"
 #include "../geometry/geometry.h"
 #include <math.h>
@@ -14,8 +15,10 @@ void draw_line(struct Framebuffer *fb,
                unsigned char r, unsigned char g, unsigned char b);
 
 void draw_triangle(struct Framebuffer *fb, 
-                   struct Vector3 v0, struct Vector3 v1, struct Vector3 v2, 
+                   struct Vector3 v0, struct Vector3 v1, struct Vector3 v2,
+                   struct Vector2 uv0, struct Vector2 uv1, struct Vector2 uv2,  
                    float b0, float b1, float b2,
-                   unsigned char r, unsigned char g, unsigned char b);
+                   float w0, float w1, float w2,
+                   struct Texture tex);
 
 #endif

@@ -72,9 +72,11 @@ void draw_line(struct Framebuffer *fb,
 }
 
 void draw_triangle(struct Framebuffer *fb, 
-                   struct Vector3 v0, struct Vector3 v1, struct Vector3 v2, 
+                   struct Vector3 v0, struct Vector3 v1, struct Vector3 v2,
+                   struct Vector2 uv0, struct Vector2 uv1, struct Vector2 uv2,  
                    float b0, float b1, float b2,
-                   unsigned char r, unsigned char g, unsigned char b)
+                   float w0, float w1, float w2,
+                   struct Texture tex)
 {
 
     // 1. **Bounding box** — find min/max x and y across all three vertices. Clamp to framebuffer bounds.
@@ -98,20 +100,27 @@ void draw_triangle(struct Framebuffer *fb,
             struct Vector3 p = {x, y, 0}; // initialize to 0 depth because we don't have that yet.
 
             // unnormalized weights (before dividing by total_area)
-            float w0 = signed_area(p, v1, v2);
-            float w1 = signed_area(v0, p, v2);
-            float w2 = signed_area(v0, v1, p);
+            float weight0 = signed_area(p, v1, v2);
+            float weight1 = signed_area(v0, p, v2);
+            float weight2 = signed_area(v0, v1, p);
 
             // 3. **Inside test** — if all three weights are ≥ 0, the pixel is inside the triangle.
-            if (w0 > 0 || w1 > 0 || w2 > 0) continue; // inside check, discard if outside
+            if (weight0 > 0 || weight1 > 0 || weight2 > 0) continue; // inside check, discard if outside
 
             // normalized weights (after dividing)
-            float alpha = w0 / total_area;
-            float beta = w1 / total_area;
-            float gamma = w2 / total_area;
+            float alpha = weight0 / total_area;
+            float beta = weight1 / total_area;
+            float gamma = weight2 / total_area;
             
             // interpolate the brightness of the pixel based each vertex normal's brightness
             float interpolated_b = alpha * b0 + beta * b1 + gamma * b2;
+
+            unsigned char r, g, b;
+
+            float inv_w = alpha * (1 / w0) + beta * (1 / w1) + gamma * (1 / w2);
+            float u_interp = (alpha * uv0.x / w0 + beta * uv1.x / w1 + gamma * uv2.x / w2) / inv_w;
+            float v_interp = (alpha * uv0.y / w0 + beta * uv1.y / w1 + gamma * uv2.y / w2) / inv_w;
+            texture_sample_bl(u_interp, v_interp, &tex, &r, &g, &b);
 
             // 4. **Depth interpolation** — interpolate the depth value using barycentric weights. Use perspective-correct interpolation.
             p.z = alpha * v0.z + beta * v1.z + gamma * v2.z; // naive approach, currently not using w_clipspace
