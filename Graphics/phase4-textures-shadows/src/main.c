@@ -10,6 +10,7 @@
 #include "../../shared/math/projection/projection.h"
 #include "../../shared/math/vec/vector.h"
 #include "../../shared/raster/raster.h"
+#include "./texture/texture.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -32,6 +33,33 @@ static const int cube_tri_indices[CUBE_TRI_COUNT][3] = {
     {0, 4, 7}, {0, 7, 3},
     {7, 6, 2}, {7, 2, 3},
     {0, 1, 5}, {0, 5, 4},
+};
+
+static const float cube_uvs[CUBE_TRI_COUNT][3][2] = {
+    // front face {4,5,6}
+    {{0,1}, {1,1}, {1,0}},
+    // front face {4,6,7}D
+    {{0,1}, {1,0}, {0,0}}, 
+    // back face {1, 0, 3}
+    {{0,1}, {1,1}, {1,0}},
+    // back face {1, 3, 2}
+    {{0,1}, {1,0}, {0,0}}, 
+    // right side face {5, 1, 2}
+    {{0,1}, {1,1}, {1,0}},
+    // right side face {5, 2, 6}
+    {{0,1}, {1,0}, {0,0}}, 
+    // left side face {0, 4, 7}
+    {{0,1}, {1,1}, {1,0}},
+    // left side face {0, 7, 3}
+    {{0,1}, {1,0}, {0,0}}, 
+    // top face {7, 6, 2}
+    {{0,1}, {1,1}, {1,0}},
+    // top face {7, 2, 3}
+    {{0,1}, {1,0}, {0,0}}, 
+    // bottom face {0, 1, 5}
+    {{0,1}, {1,1}, {1,0}},
+    // bottom face {0, 5, 4}
+    {{0,1}, {1,0}, {0,0}}, 
 };
 
 static struct Vector4 *create_cube_vertices(void) {
@@ -110,7 +138,10 @@ static void compute_triangle_lighting(
 
 static void render_single_cube(void) {
     static struct Framebuffer fb;
+    static struct Texture texture;
     static bool framebuffer_initialized = false;
+
+    texture_load((const char *)"./blue-pixel-bg.jpg", &texture);
 
     struct Vector4 *cube = create_cube_vertices();
     if (!cube) return;
@@ -179,6 +210,9 @@ static void render_single_cube(void) {
         triangles[ti].v[0] = cube_v3[cube_tri_indices[ti][0]];
         triangles[ti].v[1] = cube_v3[cube_tri_indices[ti][1]];
         triangles[ti].v[2] = cube_v3[cube_tri_indices[ti][2]];
+        triangles[ti].uv[0] = *(struct Vector2*)cube_uvs[ti][0];
+        triangles[ti].uv[1] = *(struct Vector2*)cube_uvs[ti][1];
+        triangles[ti].uv[2] = *(struct Vector2*)cube_uvs[ti][2];
         triangles[ti].clip_w[0] = clip_verts[cube_tri_indices[ti][0]].w;
         triangles[ti].clip_w[1] = clip_verts[cube_tri_indices[ti][1]].w;
         triangles[ti].clip_w[2] = clip_verts[cube_tri_indices[ti][2]].w;
