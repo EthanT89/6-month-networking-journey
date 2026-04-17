@@ -141,14 +141,14 @@ static void render_single_cube(void) {
     static struct Texture texture;
     static bool framebuffer_initialized = false;
 
-    texture_load((const char *)"./blue-pixel-bg.jpg", &texture);
+    texture_load((const char *)"./mountains-lake.jpg", &texture);
 
     struct Vector4 *cube = create_cube_vertices();
     if (!cube) return;
 
     float translation[3] = {0.0f, 0.0f, 2.0f};
-    float rotation[3] = {3.0f, 0.0f, 2.2f};
-    float scale_value = 1.0f;
+    float rotation[3] = {3.0f, 2.1f, 2.2f};
+    float scale_value = 2.0f;
 
     // define lighting position
     struct DirectionalLight light;
@@ -227,12 +227,16 @@ static void render_single_cube(void) {
             triangles[ti].v[0],
             triangles[ti].v[1],
             triangles[ti].v[2],
+            triangles[ti].uv[0],
+            triangles[ti].uv[1],
+            triangles[ti].uv[2],
             world_triangles[ti].brightness[0],
             world_triangles[ti].brightness[1],
             world_triangles[ti].brightness[2],
-            world_triangles[ti].r,
-            world_triangles[ti].g,
-            world_triangles[ti].b);
+            triangles[ti].clip_w[0],
+            triangles[ti].clip_w[1],
+            triangles[ti].clip_w[2],
+            texture);
     }
 
     fb_write_ppm(&fb, "./output.ppm");
