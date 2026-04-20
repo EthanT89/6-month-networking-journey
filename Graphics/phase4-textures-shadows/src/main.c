@@ -36,29 +36,17 @@ static const int cube_tri_indices[CUBE_TRI_COUNT][3] = {
 };
 
 static const float cube_uvs[CUBE_TRI_COUNT][3][2] = {
-    // front face {4,5,6}
     {{0,1}, {1,1}, {1,0}},
-    // front face {4,6,7}D
     {{0,1}, {1,0}, {0,0}}, 
-    // back face {1, 0, 3}
     {{0,1}, {1,1}, {1,0}},
-    // back face {1, 3, 2}
     {{0,1}, {1,0}, {0,0}}, 
-    // right side face {5, 1, 2}
     {{0,1}, {1,1}, {1,0}},
-    // right side face {5, 2, 6}
     {{0,1}, {1,0}, {0,0}}, 
-    // left side face {0, 4, 7}
     {{0,1}, {1,1}, {1,0}},
-    // left side face {0, 7, 3}
     {{0,1}, {1,0}, {0,0}}, 
-    // top face {7, 6, 2}
     {{0,1}, {1,1}, {1,0}},
-    // top face {7, 2, 3}
     {{0,1}, {1,0}, {0,0}}, 
-    // bottom face {0, 1, 5}
     {{0,1}, {1,1}, {1,0}},
-    // bottom face {0, 5, 4}
     {{0,1}, {1,0}, {0,0}}, 
 };
 
@@ -73,7 +61,6 @@ static struct Vector4 *create_cube_vertices(void) {
     cube[5] = (struct Vector4){ 1, -1,  1, 1};
     cube[6] = (struct Vector4){ 1,  1,  1, 1};
     cube[7] = (struct Vector4){-1,  1,  1, 1};
-
     return cube;
 }
 
@@ -105,7 +92,9 @@ static void build_model_space_data(
     for (int vi = 0; vi < CUBE_VERTEX_COUNT; vi++){
         struct Vector3 sum = {0, 0, 0};
         for (int ti = 0; ti < CUBE_TRI_COUNT; ti++){
-            if (cube_tri_indices[ti][0] == vi || cube_tri_indices[ti][1] == vi || cube_tri_indices[ti][2] == vi){
+            if (cube_tri_indices[ti][0] == vi ||
+                cube_tri_indices[ti][1] == vi ||
+                cube_tri_indices[ti][2] == vi){
                 sum = v3_addition(sum, world_triangles[ti].normal);
             }
         }
@@ -136,10 +125,6 @@ static void compute_triangle_lighting(
     }
 }
 
-static void render_ground_plane(struct Framebuffer *fb){
-
-}
-
 static void render_single_cube(void) {
     static struct Framebuffer fb;
     static struct Texture texture;
@@ -151,18 +136,18 @@ static void render_single_cube(void) {
     if (!cube) return;
 
     float translation[3] = {0.0f, 0.0f, 2.0f};
-    float rotation[3] = {3.0f, 2.1f, 2.2f};
+    float rotation[3]    = {3.0f, 2.1f, 2.2f};
     float scale_value = 2.0f;
 
-    // define lighting position
+    // lighting
     struct DirectionalLight light;
-    light.direction = v3_norm((struct Vector3){-1, -1, 1});
+    light.direction = v3_norm((struct Vector3){-1.0f, -1.0f, 1.0f});
     light.intensity = 1.0f;
 
-    // define camera position and target
-    struct Vector3 camera = {-5.0f, 0.0f ,0.0f};
-    struct Vector3 target = {5.0f, 0.0f, 0.0f};
-    struct Vector3 up = {0.0f, 1.0f, 0.0f};
+    // camera
+    struct Vector3 camera = {-5.0f, 0.0f, 0.0f};
+    struct Vector3 target = { 5.0f, 0.0f, 0.0f};
+    struct Vector3 up     = { 0.0f, 1.0f, 0.0f};
 
     struct Vector3 world_verts[CUBE_VERTEX_COUNT];
     struct Triangle world_triangles[CUBE_TRI_COUNT];
@@ -175,14 +160,14 @@ static void render_single_cube(void) {
     }
     fb_clear(&fb);
 
+    // model matrix
     struct Matrix translate = translation_constructor(translation[0], translation[1], translation[2]);
-    struct Matrix rotx = rotation_x_constructor(rotation[0]);
-    struct Matrix roty = rotation_y_constructor(rotation[1]);
-    struct Matrix rotz = rotation_z_constructor(rotation[2]);
+    struct Matrix rotx  = rotation_x_constructor(rotation[0]);
+    struct Matrix roty  = rotation_y_constructor(rotation[1]);
+    struct Matrix rotz  = rotation_z_constructor(rotation[2]);
     struct Matrix scale = scale_constructor(scale_value, scale_value, scale_value);
-
     struct Matrix rotate = mat4_mul(rotx, mat4_mul(roty, rotz));
-    struct Matrix model = mat4_mul(translate, mat4_mul(rotate, scale));
+    struct Matrix model  = mat4_mul(translate, mat4_mul(rotate, scale));
 
     build_model_space_data(cube, model, world_verts, world_triangles, vert_norms);
     compute_triangle_lighting(world_triangles, vert_norms, light, camera);
@@ -209,6 +194,7 @@ static void render_single_cube(void) {
         cube_v3[j] = (struct Vector3){viewport_v.x, viewport_v.y, viewport_v.z};
     }
 
+    // build screen-space triangles
     struct Triangle triangles[CUBE_TRI_COUNT];
     for (int ti = 0; ti < CUBE_TRI_COUNT; ti++){
         triangles[ti].v_cam[0] = cube_v3[cube_tri_indices[ti][0]];
@@ -249,6 +235,5 @@ static void render_single_cube(void) {
 
 int main (void) {
     render_single_cube();
-
     return 0;
 }

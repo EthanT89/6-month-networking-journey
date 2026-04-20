@@ -64,3 +64,37 @@ struct Vector4 viewport (struct Vector4 ndc, float height, float width){
     view.w = ndc.w;
     return view;
 }
+
+/*
+Unlike perspective, orthographic projection doesn't divide by depth — 
+it just scales and translates the view volume into the NDC cube. There's no `-1` in row 3 column 2 and no `w` trick.
+
+The matrix maps:
+- x from `[left, right]` to `[-1, 1]`
+- y from `[bottom, top]` to `[-1, 1]`
+- z from `[-near, -far]` to `[-1, 1]`
+*/
+
+struct Matrix orthographic(float left, float right, float bottom, float top, float near, float far){
+    struct Matrix ortho;
+
+    // initialize matrix to all 0's
+    for (int i = 0; i < 4; i++){
+        for (int j = 0; j < 4; j++){
+            ortho.m[i][j] = 0.0f;
+        }
+    }
+
+    // output = (2/(max-min)) * input - (max+min)/(max-min)
+
+    ortho.m[0][0] = 2.0f / (right - left);
+    ortho.m[1][1] = 2.0f / (top - bottom);
+    ortho.m[2][2] = -2.0f / (far - near);
+    ortho.m[3][3] = 1.0f;
+
+    ortho.m[0][3] = -1.0f * (right + left) / (right - left);
+    ortho.m[1][3] = -1.0f * (top + bottom) / (top - bottom);
+    ortho.m[2][3] = -1.0f * (far + near) / (far - near);
+
+    return ortho;
+}

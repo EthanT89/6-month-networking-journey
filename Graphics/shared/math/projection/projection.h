@@ -10,4 +10,6 @@ struct Vector4 perspective_divide(struct Vector4 clip);
 
 struct Vector4 viewport (struct Vector4 ndc, float height, float width);
 
+struct Matrix orthographic(float left, float right, float bottom, float top, float near, float far);
+
 #endif
