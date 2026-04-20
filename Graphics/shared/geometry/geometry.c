@@ -1,7 +1,7 @@
 #include "./geometry.h"
 
 int is_back_face(struct Triangle *t){
-    float area = signed_area(t->v[0], t->v[1], t->v[2]);
+    float area = signed_area(t->v_cam[0], t->v_cam[1], t->v_cam[2]);
 
     return area > 0 ? 1 : 0;
 }
@@ -42,7 +42,7 @@ float signed_area(struct Vector3 A, struct Vector3 B, struct Vector3 C ){
 }
 
 struct Vector3 get_triangle_midpoint(struct Triangle *t){
-    struct Vector3 sum = v3_addition(t->v[0], v3_addition(t->v[1], t->v[2]));
+    struct Vector3 sum = v3_addition(t->v_cam[0], v3_addition(t->v_cam[1], t->v_cam[2]));
     struct Vector3 midpoint = v3_scalar_mult(sum, (1.0f / 3.0f));
 
     return midpoint;

@@ -5,12 +5,15 @@
 
 
 struct Triangle {
-    struct Vector3 v[3]; // vertex data
-    struct Vector2 uv[3]; // per-vertex uv coordinates
+    struct Vector3 v_cam[3]; // vertex camera-space data
+    struct Vector3 v_world[3]; // vertex world-space data
     float clip_w[3]; // per-vertex clipspace w value
+    struct Vector2 uv[3]; // per-vertex uv texture coordinates
     struct Vector3 normal; // face normal in world space
+
+    // rendering properties
     float brightness[3]; // per-vertex brightness
-    unsigned char r, g, b; // rgb values, unused for texture mapping, TBD what to do with this field
+    unsigned char r, g, b; // rgb values, unused for texture mapping, TBD what to do with them now that we are using texture maps
 };
 
 int is_back_face(struct Triangle *t); // returns 1 if back-facing

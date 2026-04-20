@@ -90,16 +90,16 @@ static void build_model_space_data(
     }
 
     for (int ti = 0; ti < CUBE_TRI_COUNT; ti++){
-        world_triangles[ti].v[0] = world_verts[cube_tri_indices[ti][0]];
-        world_triangles[ti].v[1] = world_verts[cube_tri_indices[ti][1]];
-        world_triangles[ti].v[2] = world_verts[cube_tri_indices[ti][2]];
+        world_triangles[ti].v_cam[0] = world_verts[cube_tri_indices[ti][0]];
+        world_triangles[ti].v_cam[1] = world_verts[cube_tri_indices[ti][1]];
+        world_triangles[ti].v_cam[2] = world_verts[cube_tri_indices[ti][2]];
         world_triangles[ti].r = RTEST;
         world_triangles[ti].g = GTEST;
         world_triangles[ti].b = BTEST;
         world_triangles[ti].normal = compute_face_normal(
-            world_triangles[ti].v[0],
-            world_triangles[ti].v[1],
-            world_triangles[ti].v[2]);
+            world_triangles[ti].v_cam[0],
+            world_triangles[ti].v_cam[1],
+            world_triangles[ti].v_cam[2]);
     }
 
     for (int vi = 0; vi < CUBE_VERTEX_COUNT; vi++){
@@ -136,12 +136,16 @@ static void compute_triangle_lighting(
     }
 }
 
+static void render_ground_plane(struct Framebuffer *fb){
+
+}
+
 static void render_single_cube(void) {
     static struct Framebuffer fb;
     static struct Texture texture;
     static bool framebuffer_initialized = false;
 
-    texture_load((const char *)"./mountains-lake.jpg", &texture);
+    texture_load((const char *)"./content/mountains-lake.jpg", &texture);
 
     struct Vector4 *cube = create_cube_vertices();
     if (!cube) return;
@@ -207,9 +211,9 @@ static void render_single_cube(void) {
 
     struct Triangle triangles[CUBE_TRI_COUNT];
     for (int ti = 0; ti < CUBE_TRI_COUNT; ti++){
-        triangles[ti].v[0] = cube_v3[cube_tri_indices[ti][0]];
-        triangles[ti].v[1] = cube_v3[cube_tri_indices[ti][1]];
-        triangles[ti].v[2] = cube_v3[cube_tri_indices[ti][2]];
+        triangles[ti].v_cam[0] = cube_v3[cube_tri_indices[ti][0]];
+        triangles[ti].v_cam[1] = cube_v3[cube_tri_indices[ti][1]];
+        triangles[ti].v_cam[2] = cube_v3[cube_tri_indices[ti][2]];
         triangles[ti].uv[0] = *(struct Vector2*)cube_uvs[ti][0];
         triangles[ti].uv[1] = *(struct Vector2*)cube_uvs[ti][1];
         triangles[ti].uv[2] = *(struct Vector2*)cube_uvs[ti][2];
@@ -223,10 +227,10 @@ static void render_single_cube(void) {
 
     for (int ti = 0; ti < CUBE_TRI_COUNT; ti++){
         if (is_back_face(&triangles[ti])) continue;
-        draw_triangle(&fb,
-            triangles[ti].v[0],
-            triangles[ti].v[1],
-            triangles[ti].v[2],
+        draw_triangle_textured(&fb,
+            triangles[ti].v_cam[0],
+            triangles[ti].v_cam[1],
+            triangles[ti].v_cam[2],
             triangles[ti].uv[0],
             triangles[ti].uv[1],
             triangles[ti].uv[2],
