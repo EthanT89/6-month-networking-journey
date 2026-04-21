@@ -1,5 +1,7 @@
 #include "./raster.h"
 
+#define AMBIENT 0.1f
+
 void draw_line(struct Framebuffer *fb, 
                int x0, int y0, int x1, int y1,
                unsigned char r, unsigned char g, unsigned char b)
@@ -72,12 +74,27 @@ void draw_line(struct Framebuffer *fb,
 }
 
 void draw_triangle_textured(struct Framebuffer *fb, 
-                   struct Vector3 v0, struct Vector3 v1, struct Vector3 v2,
-                   struct Vector2 uv0, struct Vector2 uv1, struct Vector2 uv2,  
-                   float b0, float b1, float b2,
-                   float w0, float w1, float w2,
-                   struct Texture tex)
+                            struct Triangle triangle,
+                            struct ShadowMap *shadow_map,
+                            struct Texture tex)
 {
+
+
+    struct Vector3 v0 = triangle.v_screen[0];
+    struct Vector3 v1 = triangle.v_screen[1];
+    struct Vector3 v2 = triangle.v_screen[2];
+    // struct Vector3 wv0 = triangle.v_world[0];
+    // struct Vector3 wv1 = triangle.v_world[1];
+    // struct Vector3 wv2 = triangle.v_world[2];
+    struct Vector2 uv0 = triangle.uv[0];
+    struct Vector2 uv1 = triangle.uv[1];
+    struct Vector2 uv2 = triangle.uv[2];
+    float b0 = triangle.brightness[0];
+    float b1 = triangle.brightness[1];
+    float b2 = triangle.brightness[2];
+    float w0 = triangle.clip_w[0];
+    float w1 = triangle.clip_w[1];
+    float w2 = triangle.clip_w[2];
 
     // 1. **Bounding box** — find min/max x and y across all three vertices. Clamp to framebuffer bounds.
     int minx = MIN(v0.x, MIN(v1.x, v2.x));
@@ -112,8 +129,16 @@ void draw_triangle_textured(struct Framebuffer *fb,
             float beta = weight1 / total_area;
             float gamma = weight2 / total_area;
             
+            float wx = alpha * triangle.v_world[0].x + beta * triangle.v_world[1].x + gamma * triangle.v_world[2].x;
+            float wy = alpha * triangle.v_world[0].y + beta * triangle.v_world[1].y + gamma * triangle.v_world[2].y;
+            float wz = alpha * triangle.v_world[0].z + beta * triangle.v_world[1].z + gamma * triangle.v_world[2].z;
+
+            struct Vector3 world_pos = {wx, wy, wz};
+
+            float shadow_factor = compute_shadow(shadow_map, world_pos, 0.05f);
+            
             // interpolate the brightness of the pixel based each vertex normal's brightness
-            float interpolated_b = alpha * b0 + beta * b1 + gamma * b2;
+            float interpolated_b = (alpha * b0 + beta * b1 + gamma * b2) * (1.0f - shadow_factor) + AMBIENT * shadow_factor;
 
             unsigned char r, g, b;
 
@@ -137,9 +162,9 @@ void draw_triangle_textured(struct Framebuffer *fb,
 void draw_triangle(struct Framebuffer *fb, 
                 struct Triangle triangle)
 {
-    struct Vector3 v0 = triangle.v_cam[0];
-    struct Vector3 v1 = triangle.v_cam[1];
-    struct Vector3 v2 = triangle.v_cam[2];
+    struct Vector3 v0 = triangle.v_screen[0];
+    struct Vector3 v1 = triangle.v_screen[1];
+    struct Vector3 v2 = triangle.v_screen[2];
 
     float b0 = triangle.brightness[0];
     float b1 = triangle.brightness[1];
