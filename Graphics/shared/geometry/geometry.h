@@ -5,7 +5,7 @@
 
 
 struct Triangle {
-    struct Vector3 v_cam[3]; // vertex camera-space data
+    struct Vector3 v_screen[3]; // vertex camera-space data
     struct Vector3 v_world[3]; // vertex world-space data
     float clip_w[3]; // per-vertex clipspace w value
     struct Vector2 uv[3]; // per-vertex uv texture coordinates
