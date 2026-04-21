@@ -230,15 +230,9 @@ static void render_single_cube(void) {
 
     // --- light camera (for shadow map) ---
     struct Vector3 scene_center = {0.0f, 0.0f, 0.0f};
-    struct Vector3 light_pos    = v3_subtraction(scene_center,
-                                    v3_scalar_mult(light.direction, 10.0f));
-    struct Matrix light_view    = lookAt(light_pos, scene_center, up);
-    struct Matrix ortho         = orthographic(-10.0f, 10.0f, -10.0f, 10.0f, 0.1f, 50.0f);
-    struct Matrix light_mvp     = mat4_mul(ortho, mat4_mul(light_view, model));
 
     // --- pass 1: shadow map ---
     struct ShadowMap shadow_map = shadow_map_create();
-    shadow_map.light_mvp = light_mvp;
     shadow_map_render(&shadow_map, world_verts, CUBE_VERTEX_COUNT,
                       cube_tri_indices, CUBE_TRI_COUNT, light, scene_center);
 
@@ -246,21 +240,7 @@ static void render_single_cube(void) {
     for (int ti = 0; ti < CUBE_TRI_COUNT; ti++){
         if (is_back_face(&triangles[ti])) continue;
         draw_triangle_textured(&fb,
-            triangles[ti].v_screen[0],
-            triangles[ti].v_screen[1],
-            triangles[ti].v_screen[2],
-            triangles[ti].v_world[0],
-            triangles[ti].v_world[1],
-            triangles[ti].v_world[2],
-            triangles[ti].uv[0],
-            triangles[ti].uv[1],
-            triangles[ti].uv[2],
-            triangles[ti].brightness[0],
-            triangles[ti].brightness[1],
-            triangles[ti].brightness[2],
-            triangles[ti].clip_w[0],
-            triangles[ti].clip_w[1],
-            triangles[ti].clip_w[2],
+            triangles[ti],
             &shadow_map,
             texture);
     }
